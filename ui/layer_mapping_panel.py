@@ -1790,6 +1790,7 @@ class LayerMappingPanel(QWidget):
                 self._last_nodes_lyr = nodes_lyr
                 
                 self._active_sim_threads = []
+                self._active_sim_workers = []   # per il tasto Ferma nel batch
                 self._batch_conv = []       # (ora, converged) per il riepilogo finale
                 self._batch_launched = 0    # quante ore effettivamente avviate
                 self._log_run("Creazione rapida di tutti i CSV in corso...", 'orange')
@@ -2123,32 +2124,40 @@ class LayerMappingPanel(QWidget):
         if is_batch:
             if not hasattr(self, '_active_sim_threads'):
                 self._active_sim_threads = []
+            if not hasattr(self, '_active_sim_workers'):
+                self._active_sim_workers = []
             self._active_sim_threads.append(thread)
+            self._active_sim_workers.append(worker)   # tracciato per il tasto Ferma
         else:
             self._sim_thread = thread
             self._sim_worker = worker
 
-        # Abilita Ferma mentre gira (solo per la corsa singola non-batch).
-        if not is_batch and hasattr(self, 'btn_stop_sim'):
+        # Abilita Ferma mentre gira (sia corsa singola sia batch).
+        if hasattr(self, 'btn_stop_sim'):
             self.btn_stop_sim.setEnabled(True)
 
         thread.start()
 
     def _stop_simulation(self):
-        """Interrompe la simulazione in corso (uccide il sottoprocesso)."""
+        """Interrompe la/e simulazione/i in corso (uccide i sottoprocessi)."""
+        self._log_run("⏹ Interruzione richiesta: chiusura dei processi...", 'orange')
+        self._batch_cancelled = True
+        n = 0
         worker = getattr(self, '_sim_worker', None)
         if worker is not None:
-            self._log_run("⏹ Interruzione richiesta...", 'orange')
             try:
                 worker.cancel()
+                n += 1
             except Exception:
                 pass
-        # anche i thread batch, se presenti
+        # Worker del batch (24 processi paralleli): ora sono tracciati.
         for w in getattr(self, '_active_sim_workers', []):
             try:
                 w.cancel()
+                n += 1
             except Exception:
                 pass
+        self._log_run(f"⏹ Segnale di stop inviato a {n} processo/i.", 'orange')
         if hasattr(self, 'btn_stop_sim'):
             self.btn_stop_sim.setEnabled(False)
 
