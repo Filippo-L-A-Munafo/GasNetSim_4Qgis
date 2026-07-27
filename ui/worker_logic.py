@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import time
 import traceback
 from pathlib import Path
 import pandas as pd
@@ -8,13 +9,18 @@ import GasNetSim as gns
 def run_simulation(params: dict, log_func):
     """
     Esegue la logica computazionale di GasNetSim isolata dalla UI.
-    Ritorna la cartella di output ('Path') se converso con successo, altrimenti None.
+    Ritorna una tupla (out_folder, converged):
+      - out_folder: cartella di output ('Path') se i CSV sono stati prodotti,
+        altrimenti None in caso di errore;
+      - converged: True se la simulazione è realmente conversa, False se è
+        stato estratto solo il miglior iterato (soluzione non convergente).
     """
     def log(msg, color=''):
         log_func(str(msg), color)
 
     converged = False
     result = None
+    _t0 = time.time()          # cronometro totale della simulazione
 
     # In batch: azzera alla radice il flusso di log di GasNetSim verso lo
     # stdout. Ogni riga di log emessa dai 24 sottoprocessi viene letta e
@@ -129,13 +135,17 @@ def run_simulation(params: dict, log_func):
                         # evita del tutto la coda costosa.
                         _tol_base = max(float(params['tol']), 1.0)
                         _maxit_base = 6
+                        _ts_base = time.time()
                         base_res = base_net.simulation(
                             max_iter=_maxit_base,
                             tol=_tol_base,
                             underrelaxation_factor=float(params['urf']),
                         )
+                        log(f"[compressori]    ⏱ baseline: {time.time() - _ts_base:.1f}s", '')
                     except RuntimeError:
                         base_res = base_net
+                        log(f"[compressori]    ⏱ baseline (cap raggiunto): "
+                            f"{time.time() - _ts_base:.1f}s", '')
                     tmp_results = folder / '_baseline_results_pipes.csv'
                     rows = []
                     for pid, pipe in base_res.pipelines.items():
@@ -160,7 +170,7 @@ def run_simulation(params: dict, log_func):
                     pd.DataFrame(rows_nodes).to_csv(str(tmp_nodes), index=False, sep=';')
 
                     from GasNetSim_4Qgis.gis_integration.network_builder import inject_compressors_into_csvs
-                    rename_map, comp_csv_path = inject_compressors_into_csvs(
+                    rename_map, _ = inject_compressors_into_csvs(
                         nodes_csv, pipes_csv, comp_specs, 
                         results_pipes_csv=str(tmp_results), 
                         results_nodes_csv=str(tmp_nodes),
@@ -282,7 +292,16 @@ def run_simulation(params: dict, log_func):
             #   * NON si scrive il convergence_log.txt su OneDrive.
             # Nei run singoli si mantiene tutto (utile per il debug interattivo).
             _is_batch = bool(params.get('is_batch'))
-            if _is_batch:
+            # Il logging DEBUG per-iterazione del solver, scritto su file in
+            # OneDrive e RI-scritto a ogni solve, e' un forte collo di bottiglia
+            # I/O — trascurabile con 1 solve (rete senza compressore), pesante
+            # col compressore che esegue molti solve (baseline + tentativo +
+            # rampa a 8 passi + affinamento). Di default lo si TAGLIA (come in
+            # batch): il solver non genera nemmeno le stringhe DEBUG. Il
+            # convergence_log.txt dettagliato resta attivabile a richiesta con
+            # params['debug_convergence'] = True per il debug interattivo.
+            _want_conv_log = bool(params.get('debug_convergence')) and not _is_batch
+            if not _want_conv_log:
                 nr_logger.propagate = False
                 nr_logger.setLevel(logging.WARNING)  # niente DEBUG/INFO
             else:
@@ -295,9 +314,10 @@ def run_simulation(params: dict, log_func):
                 nr_logger.addHandler(fh)
                 nr_logger.setLevel(logging.DEBUG)
 
+            _ts = time.time()
             try:
                 if _multi_comp:
-                    return net.simulation(
+                    _res = net.simulation(
                         max_iter=max_iter,
                         tol=tol,
                         underrelaxation_factor=urf,
@@ -307,12 +327,21 @@ def run_simulation(params: dict, log_func):
                         coupling_tol=tol * 1e-2,
                         warm_start=warm_start,
                     )
-                return net.simulation(
-                    max_iter=max_iter,
-                    tol=tol,
-                    underrelaxation_factor=urf,
-                    warm_start=warm_start,
-                )
+                else:
+                    _res = net.simulation(
+                        max_iter=max_iter,
+                        tol=tol,
+                        underrelaxation_factor=urf,
+                        warm_start=warm_start,
+                    )
+                _its = getattr(_res, 'last_iterations', '?')
+                log(f"   ⏱ solve: {time.time() - _ts:.1f}s "
+                    f"(iter={_its}, max_iter={max_iter}, tol={tol:g}, urf={urf:g})", '')
+                return _res
+            except Exception:
+                log(f"   ⏱ solve NON converso: {time.time() - _ts:.1f}s "
+                    f"(max_iter={max_iter}, tol={tol:g}, urf={urf:g})", 'orange')
+                raise
             finally:
                 if fh is not None:
                     nr_logger.removeHandler(fh)
@@ -523,7 +552,10 @@ def run_simulation(params: dict, log_func):
                 # fallito: si rifa' un solve all'ultimo tol riuscito per
                 # riportarla su uno stato valido (network.simulation() muta la
                 # rete in-place).
-                if best_tol != tol_ok or True:
+                # Consolida SEMPRE: la rete potrebbe essere rimasta nello stato
+                # di un tentativo di bisezione fallito, quindi si rifà un solve
+                # all'ultimo tol riuscito per riportarla su uno stato valido.
+                if True:
                     log(f"   consolido la soluzione a tol={tol_ok:.4g}", 'green')
                     try:
                         _run_sim(network, int(params['max_iter']), tol_ok, urf)
@@ -695,13 +727,20 @@ def run_simulation(params: dict, log_func):
             except Exception:
                 log(f"Attenzione: impossibile salvare CSV risultati.\n{traceback.format_exc()}", 'orange')
 
-        if not params.get('is_batch', False):
+        _elapsed = time.time() - _t0
+        _mm, _ss = divmod(_elapsed, 60)
+        _tempo_str = (f"{int(_mm)}m {_ss:.1f}s" if _mm else f"{_ss:.1f}s")
+        _col = 'green' if converged else 'orange'
+        if params.get('is_batch', False):
+            log(f"⏱ Tempo totale simulazione: {_tempo_str}", _col)
+        else:
             log(f"\n{'='*50}", '')
             log("  Elaborazione terminata.", '')
+            log(f"  ⏱ Tempo totale: {_tempo_str}", _col)
             log(f"{'='*50}", '')
 
-        return out_folder
+        return out_folder, converged
 
     except Exception:
         log(f"\n[ERRORE]\n{traceback.format_exc()}", 'red')
-        return None
+        return None, False

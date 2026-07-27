@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QLabel, QLineEdit, QPushButton,
     QFileDialog, QDoubleSpinBox, QSpinBox, QCheckBox,
     QTabWidget, QComboBox, QTextEdit, QScrollArea, QMessageBox,
-    QRadioButton, QButtonGroup, QSplitter,
+    QSplitter,
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor, QTextCharFormat, QTextCursor
@@ -455,7 +455,7 @@ class LayerMappingPanel(QWidget):
         self.spin_pressure = QDoubleSpinBox()
         self.spin_pressure.setRange(1.0, 300.0)
         self.spin_pressure.setDecimals(1)
-        self.spin_pressure.setValue(70.0)
+        self.spin_pressure.setValue(75.0)
         self.spin_pressure.setSuffix(" bar")
         adv_form.addRow("Pressione reference:", self.spin_pressure)
 
@@ -483,12 +483,12 @@ class LayerMappingPanel(QWidget):
         self.spin_roughness = QDoubleSpinBox()
         self.spin_roughness.setRange(1e-7, 0.1)
         self.spin_roughness.setDecimals(7)
-        self.spin_roughness.setValue(0.00005)
+        self.spin_roughness.setValue(0.000012)
         self.spin_roughness.setSuffix(" m")
         _rough_row.addWidget(self.spin_roughness)
         _btn_reset_rough = QPushButton("\u21ba")
         _btn_reset_rough.setFixedWidth(26)
-        _btn_reset_rough.clicked.connect(lambda: self.spin_roughness.setValue(0.00005))
+        _btn_reset_rough.clicked.connect(lambda: self.spin_roughness.setValue(0.000012))
         _rough_row.addWidget(_btn_reset_rough)
         adv_form.addRow("Rugosit\u00e0 condotte:", _rough_row)
 
@@ -542,9 +542,29 @@ class LayerMappingPanel(QWidget):
         self.spin_tol = QDoubleSpinBox()
         self.spin_tol.setRange(0.0001, 10.0)
         self.spin_tol.setDecimals(4)
-        self.spin_tol.setValue(1.0)
+        self.spin_tol.setValue(0.001)
         self.spin_tol.setToolTip("Es. 1.0 Sm³/s equivale a ben 3600 Sm³/h di errore nel bilancio del nodo.")
-        sform.addRow("Tolleranza [Sm³/s]:", self.spin_tol)
+        # Riquadro accanto: mostra la tolleranza convertita in Sm³/h (× 3600),
+        # aggiornato in tempo reale, così non serve convertirla a mano.
+        _tol_row = QHBoxLayout()
+        _tol_row.setContentsMargins(0, 0, 0, 0)
+        _tol_row.setSpacing(6)
+        _tol_row.addWidget(self.spin_tol)
+        _tol_row.addWidget(QLabel("="))
+        self.txt_tol_smc_h = QLineEdit()
+        self.txt_tol_smc_h.setReadOnly(True)
+        self.txt_tol_smc_h.setFixedWidth(90)
+        self.txt_tol_smc_h.setToolTip(
+            "Tolleranza equivalente in Sm³/h (= valore in Sm³/s × 3600). Solo lettura.")
+        _tol_row.addWidget(self.txt_tol_smc_h)
+        _tol_row.addWidget(QLabel("Sm³/h"))
+        _tol_row.addStretch()
+
+        def _update_tol_smc_h(_=None):
+            self.txt_tol_smc_h.setText(f"{self.spin_tol.value() * 3600.0:.1f}")
+        self.spin_tol.valueChanged.connect(_update_tol_smc_h)
+        _update_tol_smc_h()
+        sform.addRow("Tolleranza [Sm³/s]:", _tol_row)
 
         self.spin_urf = QDoubleSpinBox()
         self.spin_urf.setRange(0.1, 20.0)
@@ -805,19 +825,6 @@ class LayerMappingPanel(QWidget):
         self.txt_log_run.setTextCursor(cursor)
         self.txt_log_run.ensureCursorVisible()
         QCoreApplication.processEvents()
-
-    # -------------------------------------------------------------------------
-    # Tab 2 – Parametri Simulazione (stub: widgets spostati in Tab 1)
-    # -------------------------------------------------------------------------
-
-        # ── Log ───────────────────────────────────────────────────────────────
-    # ─────────────────────────────────────────────────────────────────────────
-    # Tab 2 — Parametri Simulazione
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _build_sim_tab(self, widget):
-        """Stub: contenuto spostato in Tab 1 (Prepara e Simula)."""
-        pass
 
     # ─────────────────────────────────────────────────────────────────────────
     # Gestione layer QGIS
@@ -1298,58 +1305,6 @@ class LayerMappingPanel(QWidget):
             QFileDialog.ShowDirsOnly)
         if folder:
             self.txt_prepare_folder.setText(folder)
-
-    def _browse_folder(self):
-        """Rimosso: la cartella input e' ora gestita internamente da _last_input_dir."""
-        pass
-
-    def _run_network_check(self):
-        """Controlla la topologia della rete senza collassare o simulare.
-
-        Applica gli stessi step del pipeline (fix geometrie + esplosione
-        polilinee) per rispecchiare esattamente la rete che vedra' il solver.
-        """
-        self.txt_log_run.clear()
-        pipe_layer = self.cb_pipes.currentData()
-        if pipe_layer is None:
-            self._log_run("ERRORE: nessun layer condotte selezionato.", 'red')
-            return
-        self._log_run(f"Controllo rete: {pipe_layer.name()} "
-                      f"({pipe_layer.featureCount()} feature) ...")
-        try:
-            import processing as _proc
-            from PyQt5.QtCore import QCoreApplication
-            from ..gis_integration.network_builder import build_graph, check_pipe_issues
-
-            # Stessi pre-processing del pipeline reale
-            self._log_prepare("  Fix geometrie ...")
-            fixed = _proc.run("native:fixgeometries", {
-                'INPUT': pipe_layer, 'METHOD': 1,
-                'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-            QCoreApplication.processEvents()
-
-            self._log_prepare("  Esplosione polilinee ...")
-            exploded = _proc.run("native:explodelines", {
-                'INPUT': fixed, 'OUTPUT': 'TEMPORARY_OUTPUT'})['OUTPUT']
-            QCoreApplication.processEvents()
-            self._log_prepare(f"  Segmenti dopo esplosione: {exploded.featureCount()}")
-
-            archi, _, skipped_null = build_graph(exploded)
-            self._log_prepare(
-                f"  Archi nel grafo: {len(archi)}  "
-                f"(scartati null/degenerate: {skipped_null})")
-
-            warnings = check_pipe_issues(archi, skipped_null=skipped_null)
-            if warnings:
-                for w in warnings:
-                    self._log_prepare(f"\u26a0 {w}")
-            else:
-                self._log_prepare("[OK] Nessun problema topologico rilevato.")
-            self._tab_repair.notify_islands(pipe_layer, warnings)
-        except Exception as exc:
-            import traceback
-            self._log_prepare(f"ERRORE: {exc}")
-            self._log_prepare(traceback.format_exc())
 
     def _show_warnings_dialog(self, warnings, pipe_layer=None):
         """Dialog NON modale per avvisi rete con pulsante Flash condotte problematiche."""
@@ -1835,6 +1790,8 @@ class LayerMappingPanel(QWidget):
                 self._last_nodes_lyr = nodes_lyr
                 
                 self._active_sim_threads = []
+                self._batch_conv = []       # (ora, converged) per il riepilogo finale
+                self._batch_launched = 0    # quante ore effettivamente avviate
                 self._log_run("Creazione rapida di tutti i CSV in corso...", 'orange')
                 for i in range(24):
                     run_dir, run_label = _next_run_subdir(user_folder)
@@ -1916,6 +1873,7 @@ class LayerMappingPanel(QWidget):
                     params_i['ora'] = i
                     params_i['is_batch'] = True
                     self._start_simulation(params_i, is_batch=True)
+                    self._batch_launched += 1
                     
             except Exception as exc:
                 import traceback
@@ -2200,6 +2158,12 @@ class LayerMappingPanel(QWidget):
         if not is_batch and hasattr(self, 'btn_stop_sim'):
             self.btn_stop_sim.setEnabled(False)
 
+        # Registra l'esito di convergenza di questa ora per il riepilogo batch.
+        if is_batch:
+            if not hasattr(self, '_batch_conv') or self._batch_conv is None:
+                self._batch_conv = []
+            self._batch_conv.append((ora, bool(converged)))
+
         is_last = False
         if thread is not None:
             thread.quit()
@@ -2268,10 +2232,16 @@ class LayerMappingPanel(QWidget):
                         if is_batch and run_cartella:
                             out_dir = str(Path(run_cartella).parent)
                             
+                        # In batch i 24 processi salvano nella STESSA cartella:
+                        # il numero #N del layer è assegnato da un contatore che
+                        # va in gara fra i processi, quindi i nomi collidono. Si
+                        # aggiunge il suffisso ora (h00..h23), univoco, al nome
+                        # del file GPKG per evitare collisioni.
+                        _gpkg_suffix = f"h{ora:02d}" if (is_batch and ora is not None) else ""
                         if res_nodes is not None:
-                            res_nodes = self._persist_result_layer(res_nodes, out_dir)
+                            res_nodes = self._persist_result_layer(res_nodes, out_dir, _gpkg_suffix)
                         if res_pipes is not None:
-                            res_pipes = self._persist_result_layer(res_pipes, out_dir)
+                            res_pipes = self._persist_result_layer(res_pipes, out_dir, _gpkg_suffix)
                         if self.iface is not None:
                             self.iface.mapCanvas().refresh()
                     self._refresh_viz_combos()
@@ -2293,16 +2263,39 @@ class LayerMappingPanel(QWidget):
             if is_last:
                 import time
                 elapsed = time.time() - getattr(self, '_batch_start_time', time.time())
-                self._log_run("=" * 50)
-                self._log_run(f"  BATCH 24 ORE (PARALLELO) COMPLETATO CON SUCCESSO! ({elapsed:.1f} s)", "green")
-                self._log_run("=" * 50)
-                self.simulation_done.emit(True, None)
+                conv = getattr(self, '_batch_conv', []) or []
+                launched = getattr(self, '_batch_launched', len(conv)) or len(conv)
+                n_conv = sum(1 for _o, c in conv if c)
+                failed_hours = sorted(o for o, c in conv if not c and o is not None)
+                skipped = 24 - launched
+                _mm, _ss = divmod(elapsed, 60)
+                _tstr = f"{int(_mm)}m {int(_ss):02d}s" if _mm >= 1 else f"{_ss:.1f}s"
+                all_ok = (n_conv == launched and launched > 0)
+                _c = "green" if all_ok else "orange"
+
+                self._log_run("=" * 50, _c)
+                self._log_run("  RIEPILOGO BATCH 24 ORE (PARALLELO)", _c)
+                self._log_run("=" * 50, _c)
+                self._log_run(f"  Simulazioni converse:     {n_conv}/{launched}", _c)
+                if failed_hours:
+                    _fh = ", ".join(f"h{o}" for o in failed_hours)
+                    self._log_run(f"  NON converse (best iterate): {_fh}", "orange")
+                    self._log_run("     → per queste ore il risultato è il miglior iterato,", "orange")
+                    self._log_run("       NON una soluzione convergente: verificarle.", "orange")
+                if skipped > 0:
+                    self._log_run(f"  Ore saltate (0 reference): {skipped}", "orange")
+                self._log_run(f"  Tempo totale (parallelo): {_tstr}", _c)
+                self._log_run("=" * 50, _c)
+
+                self.simulation_done.emit(all_ok, None)
                 self._set_buttons_enabled(True)
 
-    def _persist_result_layer(self, lyr, out_dir: str):
+    def _persist_result_layer(self, lyr, out_dir: str, unique_suffix: str = ""):
         """Salva il layer in memoria come GeoPackage nella cartella out_dir.
         Copia lo stile, rimuove il layer temporaneo dal progetto e carica
-        quello su file. Restituisce il nuovo layer (o l'originale se fallisce)."""
+        quello su file. Restituisce il nuovo layer (o l'originale se fallisce).
+        unique_suffix (es. 'h08') viene aggiunto al nome del file per evitare
+        collisioni fra i processi paralleli del batch."""
         try:
             import re as _re
             from pathlib import Path
@@ -2311,6 +2304,8 @@ class LayerMappingPanel(QWidget):
                 QgsCoordinateTransformContext, QgsVectorLayer,
             )
             safe_name = _re.sub(r'[^\w\-]', '_', lyr.name()).strip('_')
+            if unique_suffix:
+                safe_name = f"{safe_name}_{unique_suffix}"
             gpkg_path = str(Path(out_dir) / f"{safe_name}.gpkg")
             
             if Path(gpkg_path).exists():
