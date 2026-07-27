@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+
+# Ambienti virtuali
+.venv/
+venv/
+env/
+
+# Artefatti generati a runtime dal plugin
+run_worker.py
+params.json
+success.json
+convergence_log.txt
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# QGIS
+*.qgs~
+*.qgz~

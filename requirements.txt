@@ -1,0 +1,40 @@
+# ============================================================
+# GasNetSim_4Qgis Plugin - Dipendenze Python
+# ============================================================
+# La maggior parte è già inclusa in QGIS 3.44 (Python 3.12).
+# Le righe marcate [INCLUSA IN QGIS] non richiedono installazione.
+#
+# INSTALLAZIONE MANUALE (una tantum):
+#   1. Apri OSGeo4W Shell come amministratore
+#   2. Esegui: pip install -r requirements.txt
+#
+# OPPURE lascia che il plugin installi automaticamente le dipendenze
+# mancanti al primo avvio (vedi core/dependency_checker.py).
+# ============================================================
+
+# --- Già incluse in QGIS 3.44 ---  [INCLUSA IN QGIS]
+# numpy>=1.19.2
+# pandas>=1.1.3
+# scipy>=1.5.2
+# matplotlib>=3.3.2
+# shapely>=2.0.6
+# geopandas>=1.0.1
+# requests>=2.25.1
+# openpyxl>=3.1.5
+# pyarrow>=17.0.0
+# tqdm>=4.64.1
+
+# --- Da installare se mancanti ---
+seaborn>=0.12.2
+numba>=0.58.1
+networkx==3.2.1
+pyparsing~=3.0.7
+plotly>=5.23.0
+
+# --- GasNetSim (installazione locale editable) ---
+# Il motore di simulazione viene preso da:
+#   gasnetsim-dev/  (nella stessa cartella del workspace)
+# Il file gasnetsim.pth in AppData\Roaming\Python\Python312\site-packages
+# aggiunge automaticamente il path al Python di QGIS.
+# Per reinstallarlo manualmente:
+#   pip install --no-deps -e "C:\Users\Munafo'\OneDrive - UNIPA\Dottorato\Antigravity\gasnetsim-dev"
