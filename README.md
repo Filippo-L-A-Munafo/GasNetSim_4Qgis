@@ -62,19 +62,33 @@ This plugin needs the [GasNetSim engine fork](https://github.com/Filippo-L-A-Mun
 
 ```
 :: 1. In a regular terminal (not the OSGeo4W Shell), clone to a SHORT path
-::    close to the drive root - e.g. C:\gasnetsim. Windows has a 260-char
-::    path limit, and some files in this repo have long nested paths, so
-::    cloning deep inside OneDrive or another long path can fail with
-::    "Filename too long".
-git clone --branch improvement/modular-simulation-architecture https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git C:\gasnetsim
+::    under your user folder - e.g. C:\Users\<you>\GasNetSim_4Qgis-engine.
+::    Do NOT use bare C:\ (untidy) or Program Files (you won't have write
+::    access there without admin rights) - and do NOT nest it inside the
+::    QGIS plugin folder or a deep OneDrive path either, see the path
+::    length note below.
+git clone --branch improvement/modular-simulation-architecture https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git C:\Users\<you>\GasNetSim_4Qgis-engine
 
 :: 2. Then, from the OSGeo4W Shell / QGIS Python environment:
-pip install --no-deps -e C:\gasnetsim
+pip install --no-deps -e C:\Users\<you>\GasNetSim_4Qgis-engine
 ```
 
 On macOS/Linux, `git` is normally already on `PATH`, so
 `pip install "git+https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git@improvement/modular-simulation-architecture"`
 works directly with the QGIS Python from step 2.
+
+> **Why the path has to be short**: Windows caps full paths at 260
+> characters. The source files in this repo are short enough on their own
+> (88 characters at most), but `numba` (used for JIT-compiled gas mixture
+> functions) writes its own cache files at import time with much longer
+> generated names — e.g. `lucas.LucasViscosityCalculator._calculate_
+> polarity_correction-28.py312.nbi.tmp.<hash>`, ~168 characters by itself.
+> Verified: cloning straight into the QGIS plugin's own install folder
+> (`...\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\GasNetSim_4Qgis\`,
+> already 89 characters before adding anything — a fixed QGIS convention,
+> not something you can shorten) blows past the limit and crashes the
+> plugin at import time with a `numba` `FileNotFoundError`. A short path
+> under your user folder (~30-40 characters) leaves enough headroom.
 
 > **Version note**: upstream GasNetSim requires `geopandas>=1.0.1` and
 > `openpyxl>=3.1.5`; some QGIS versions bundle slightly older ones (e.g. QGIS
