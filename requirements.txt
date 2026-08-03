@@ -1,18 +1,21 @@
 # ============================================================
-# GasNetSim_4Qgis Plugin - Dipendenze Python
+# GasNetSim_4Qgis Plugin - Python dependencies
 # ============================================================
-# La maggior parte è già inclusa in QGIS 3.44 (Python 3.12).
-# Le righe marcate [INCLUSA IN QGIS] non richiedono installazione.
+# Most of these already ship with QGIS >= 3.34 (Python 3.10+).
+# Lines marked [BUNDLED WITH QGIS] normally need no action.
 #
-# INSTALLAZIONE MANUALE (una tantum):
-#   1. Apri OSGeo4W Shell come amministratore
-#   2. Esegui: pip install -r requirements.txt
+# INSTALL (one-time):
+#   Windows - open the "OSGeo4W Shell" that matches your QGIS install
+#             (Start menu) and run:
+#               pip install -r requirements.txt
+#   macOS   - open a terminal and run QGIS's own pip, e.g.:
+#               /Applications/QGIS.app/Contents/MacOS/bin/pip3 install -r requirements.txt
 #
-# OPPURE lascia che il plugin installi automaticamente le dipendenze
-# mancanti al primo avvio (vedi core/dependency_checker.py).
+# See README.md for the full step-by-step installation guide
+# (including how to install the GasNetSim engine itself, below).
 # ============================================================
 
-# --- Già incluse in QGIS 3.44 ---  [INCLUSA IN QGIS]
+# --- Already bundled with QGIS ---  [BUNDLED WITH QGIS]
 # numpy>=1.19.2
 # pandas>=1.1.3
 # scipy>=1.5.2
@@ -24,17 +27,20 @@
 # pyarrow>=17.0.0
 # tqdm>=4.64.1
 
-# --- Da installare se mancanti ---
+# --- Install if missing ---
 seaborn>=0.12.2
 numba>=0.58.1
 networkx==3.2.1
 pyparsing~=3.0.7
 plotly>=5.23.0
 
-# --- GasNetSim (installazione locale editable) ---
-# Il motore di simulazione viene preso da:
-#   gasnetsim-dev/  (nella stessa cartella del workspace)
-# Il file gasnetsim.pth in AppData\Roaming\Python\Python312\site-packages
-# aggiunge automaticamente il path al Python di QGIS.
-# Per reinstallarlo manualmente:
-#   pip install --no-deps -e "C:\Users\Munafo'\OneDrive - UNIPA\Dottorato\Antigravity\gasnetsim-dev"
+# --- GasNetSim simulation engine ---
+# This plugin depends on a fork of GasNetSim (adds compressor support and
+# several solver robustness fixes on top of upstream):
+#   https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv
+#
+# Install it with:
+#   pip install "git+https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git@improvement/modular-simulation-architecture"
+#
+# (If you are developing the engine locally instead, clone it and use
+#  `pip install --no-deps -e /path/to/your/gasnetsim-dev` instead.)
