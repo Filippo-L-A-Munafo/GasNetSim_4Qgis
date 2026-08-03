@@ -49,11 +49,40 @@ Open a terminal that uses QGIS's own Python environment:
 - **Linux**: use the `pip` associated with the Python QGIS was built against
   (often the system `pip3`, or the one from your QGIS package/conda env).
 
-This also installs the GasNetSim engine fork straight from GitHub (see the
-comments in `requirements.txt` for the exact command if you need to run it
-separately, or want to point it at a local clone for development instead).
+### 3. Install the GasNetSim engine
 
-### 3. Enable the plugin in QGIS
+This plugin needs the [GasNetSim engine fork](https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv)
+(adds compressor support and solver fixes on top of upstream GasNetSim).
+
+> **Windows note**: the OSGeo4W Shell resets its `PATH` on startup, so `git`
+> is normally **not** reachable from it even if Git for Windows is installed
+> system-wide — `pip install git+https://...` will fail there with
+> `Cannot find command 'git'`. Clone the repo from a regular terminal first,
+> then install it from the local path:
+
+```
+:: 1. In a regular terminal (not the OSGeo4W Shell), clone to a SHORT path
+::    close to the drive root - e.g. C:\gasnetsim. Windows has a 260-char
+::    path limit, and some files in this repo have long nested paths, so
+::    cloning deep inside OneDrive or another long path can fail with
+::    "Filename too long".
+git clone --branch improvement/modular-simulation-architecture https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git C:\gasnetsim
+
+:: 2. Then, from the OSGeo4W Shell / QGIS Python environment:
+pip install --no-deps -e C:\gasnetsim
+```
+
+On macOS/Linux, `git` is normally already on `PATH`, so
+`pip install "git+https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git@improvement/modular-simulation-architecture"`
+works directly with the QGIS Python from step 2.
+
+> **Version note**: upstream GasNetSim requires `geopandas>=1.0.1` and
+> `openpyxl>=3.1.5`; some QGIS versions bundle slightly older ones (e.g. QGIS
+> 3.40.2 ships geopandas 1.0.0 / openpyxl 3.1.2). `pip` will print an
+> incompatibility warning; the plugin has been verified to work regardless,
+> but upgrade those two packages if you run into geopandas/openpyxl errors.
+
+### 4. Enable the plugin in QGIS
 
 Restart QGIS, then go to **Plugins -> Manage and Install Plugins ->
 Installed**, and check **GasNetSim_4Qgis**.

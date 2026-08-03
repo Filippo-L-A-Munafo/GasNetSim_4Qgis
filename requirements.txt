@@ -15,7 +15,7 @@
 # (including how to install the GasNetSim engine itself, below).
 # ============================================================
 
-# --- Already bundled with QGIS ---  [BUNDLED WITH QGIS]
+# --- Usually already bundled with QGIS ---  [BUNDLED WITH QGIS]
 # numpy>=1.19.2
 # pandas>=1.1.3
 # scipy>=1.5.2
@@ -25,7 +25,12 @@
 # requests>=2.25.1
 # openpyxl>=3.1.5
 # pyarrow>=17.0.0
-# tqdm>=4.64.1
+#
+# NOTE: verified against QGIS 3.40.2 - all of the above were already present,
+# EXCEPT tqdm, which was NOT bundled and had to be installed explicitly.
+# Kept in the active list below rather than assumed-bundled, since this may
+# vary by QGIS version/distribution.
+tqdm>=4.64.1
 
 # --- Install if missing ---
 seaborn>=0.12.2
@@ -39,8 +44,27 @@ plotly>=5.23.0
 # several solver robustness fixes on top of upstream):
 #   https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv
 #
-# Install it with:
+# RECOMMENDED install method - clone, then install in editable mode from the
+# local path. This avoids depending on `git` being available inside the
+# OSGeo4W/QGIS shell, which is NOT the case by default even if Git for
+# Windows is installed system-wide (the OSGeo4W shell resets PATH on
+# startup, see o4w_env.bat):
+#
+#   1. In a REGULAR terminal (not the OSGeo4W shell), clone the engine to a
+#      SHORT path close to the drive root, e.g. C:\gasnetsim (Windows has a
+#      260-character path limit, and some files in this repo have long
+#      nested paths - cloning deep inside OneDrive or another long path
+#      can fail with "Filename too long"):
+#        git clone --branch improvement/modular-simulation-architecture ^
+#          https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git C:\gasnetsim
+#   2. Then, from the OSGeo4W/QGIS shell:
+#        pip install --no-deps -e C:\gasnetsim
+#
+# Alternative (only works if `git` is reachable from the OSGeo4W shell,
+# e.g. after manually adding it to PATH for that session):
 #   pip install "git+https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git@improvement/modular-simulation-architecture"
 #
-# (If you are developing the engine locally instead, clone it and use
-#  `pip install --no-deps -e /path/to/your/gasnetsim-dev` instead.)
+# NOTE: the upstream GasNetSim package requires geopandas>=1.0.1 and
+# openpyxl>=3.1.5; QGIS 3.40.2 ships slightly older versions (1.0.0 / 3.1.2).
+# pip will warn about this but the plugin has been tested and works; if you
+# hit geopandas/openpyxl-related errors, upgrade those two packages.
