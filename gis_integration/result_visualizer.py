@@ -27,12 +27,11 @@ from qgis.core import (
     QgsStyle, QgsSymbol,
     QgsWkbTypes, QgsSimpleLineSymbolLayer,
     QgsMarkerLineSymbolLayer, QgsSimpleMarkerSymbolLayer,
-    QgsSimpleMarkerSymbolLayerBase, QgsMarkerSymbol, QgsGeometry,
-    QgsProperty, QgsSymbolLayer, QgsUnitTypes,
-    QgsPalLayerSettings, QgsVectorLayerSimpleLabeling, QgsTextFormat,
+    QgsSimpleMarkerSymbolLayerBase, QgsMarkerSymbol,
+    QgsProperty, QgsSymbolLayer,
 )
 from PyQt5.QtCore import QVariant
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor
 import re as _re
 
 # Rimuove parole di tipo ridondanti (nodi/condotte) dal nome del layer sorgente
@@ -576,7 +575,7 @@ def apply_results_to_orig_pipes(result, orig_pipes_lyr, collapsed_pipes_lyr,
             log(msg)
 
     try:
-        from qgis.core import QgsSpatialIndex, QgsGeometry
+        from qgis.core import QgsSpatialIndex
         pipe_data = _extract_pipe_data(result)
         if not pipe_data:
             _log("[orig_pipes] nessun dato condotte disponibile")

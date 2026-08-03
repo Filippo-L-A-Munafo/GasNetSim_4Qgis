@@ -16,6 +16,15 @@ Il plugin funziona ma porta i segni evidenti di un'evoluzione: un'architettura p
 - **CRS mai propagato** — `make_memory_layers` (righe 1972, 2246), `split_network_at_user_nodes` (1862, 2168) e `match_user_nodes` (1884, ecc.) sono tutti chiamati **senza** `crs=`, quindi usano il default hardcoded `EPSG:25833`. I layer risultato sono geograficamente disallineati per qualunque utente non in 25833.
 - **`worker_logic.py:526` `if best_tol != tol_ok or True:`** — l'`or True` rende il ramo sempre vero (residuo di debug).
 
+> **RIVERIFICA 03/08/2026** (sessione i18n + throttling batch): il secondo punto (`or True` in worker_logic.py) **non è più presente** nel codice attuale — grep pulito, nessun risultato.
+>
+> Il primo punto (**CRS mai propagato**) era confermato ancora attivo, e **ora RISOLTO**. Verificato con l'utente: la rete d'ufficio è in EPSG:25833 (per questo il bug non si notava mai), ma aprendo un progetto qui il canvas QGIS risultava in EPSG:3857 — falsa pista, il canvas non c'entra (QGIS riproietta la visualizzazione al volo, il CRS che conta è quello di ogni singolo layer). Verificato invece il file GeoJSON sorgente reale
+> (`sf_node_20260115_with_comp.geojson`, dalla disaggregazione consumi): dichiara esplicitamente `EPSG:25833` e le coordinate (es. 282819/4171888, metri UTM) lo confermano — i dati erano corretti anche qui.
+>
+> Il bug however era reale e più serio di una semplice etichetta: `match_user_nodes()` (riga 569) usa `crs` per costruire `dst_crs` e riproietta `user_layer` in quel CRS **prima** di confrontarlo per distanza con `nodo_xy` (che è nel CRS vero del layer condotte). Con `crs` hardcoded a 25833, se `pipe_layer` fosse mai stato in un CRS diverso, il confronto di distanza sarebbe stato tra coordinate numericamente incompatibili — non solo un'etichetta sbagliata sull'output, ma un aggancio nodi potenzialmente sbagliato. Il default hardcoded ha funzionato finora solo perché per coincidenza tutti i dati dell'utente sono sempre stati in 25833.
+>
+> **Fix applicato**: tutti e 10 i call-site in `run_collapse_pipeline`/`run_nocollapse_pipeline` ora passano `crs=pipe_layer.crs().authid()` invece di lasciare il default. Per i file attuali dell'utente (già in 25833) il valore passato è identico al vecchio default → **nessun cambio di comportamento per i dati esistenti**, verificato. Compilazione e import con binding QGIS reali OK.
+
 ---
 
 ## 1. Codice morto — unità intere mai usate (nuovi ritrovamenti)
@@ -44,11 +53,11 @@ Contiene solo un `__init__.py` di 2 righe di commento + `__pycache__`. Il motore
 ### 2.1 `_run_network_check` — spacchettamento errato del valore di ritorno
 Riga 1342: `warnings = check_pipe_issues(archi, skipped_null=skipped_null)`. Ma `check_pipe_issues` ritorna una **tupla** `(warnings, bad_ids)` (network_builder.py:1089). Il codice poi itera la tupla (`for w in warnings`) e la passa a `notify_islands`. È rotto. Il metodo è però dead code (§1.3), quindi latente. Correzione: `warnings, _ = check_pipe_issues(...)`.
 
-### 2.2 `inject_compressors_into_csvs` — ramo `if/else` identico + log fuorviante
-Righe 1512–1539: i due rami di `if control_mode == "pressure": ... else: ...` impostano **gli stessi identici valori** (`dup['node_type'] = ''`, `dup['pressure_pa'] = ''`). La differenziazione è morta (residuo del refactoring spiegato nel lungo commento). Peggio: il log a riga 1572–1573 dice ancora *«OUT nodo … (Reference a X bar)»*, in **diretta contraddizione** con il codice (il nodo NON è più un reference). Unificare il ramo e correggere il messaggio.
+### 2.2 `inject_compressors_into_csvs` — ramo `if/else` identico + log fuorviante ✅ RISOLTO (03/08/2026)
+Righe 1512–1539: i due rami di `if control_mode == "pressure": ... else: ...` impostavano **gli stessi identici valori**. Ora unificati: un solo blocco commentato spiega perché il nodo di uscita compressore è sempre giunzione normale sia in PCM sia in ratio-mode. Verificato sul codice attuale.
 
-### 2.3 `main_dialog.py` — `self.inspector` mai creato
-Righe 36–39: `self.inspector.refresh_layers()` in `try/except: pass`. `self.inspector` non esiste (solo `self.mapping_panel`): `AttributeError` sistematico e silenziato. Rimuovere il blocco. *(Coincide con §8.1 del report esistente — confermato ancora presente.)*
+### 2.3 `main_dialog.py` — `self.inspector` mai creato ✅ RISOLTO (03/08/2026)
+Righe 36–39: `self.inspector.refresh_layers()` in `try/except: pass`. `self.inspector` non esiste (solo `self.mapping_panel`): `AttributeError` sistematico e silenziato. *(Coincide con §8.1 del report esistente.)* Il blocco morto è stato rimosso nel lavoro non ancora committato al 03/08/2026 — verificato assente nel codice attuale.
 
 ---
 
@@ -136,8 +145,10 @@ Analisi mirata su **come vengono orchestrati i processi paralleli e come i risul
 
 ## 9.2 Criticità di concorrenza
 
-### 🟠 9.2.1 Nessun tetto al numero di processi
+### 🟠 9.2.1 Nessun tetto al numero di processi ✅ RISOLTO (03/08/2026)
 Vengono avviati **sempre 24 subprocessi** a prescindere dai core disponibili (nessun `os.cpu_count()`, nessun `Semaphore`/pool a scaglioni). Su macchine con pochi core → contesa e pressione di memoria (ogni processo ricarica rete + tabelle GERG2008); su macchine con molti più di 24 core → sottoutilizzo. Consigliato: limitare la concorrenza a ~`os.cpu_count()` con una coda che avvia i processi a ondate.
+
+> Implementato: `layer_mapping_panel.py` — `_max_parallel_sims()` (stima core fisici = os.cpu_count()//2) + `_batch_queue`/`_launch_queued_batch_jobs()` (coda con refill automatico da `_on_sim_finished`, guardia su `_batch_cancelled` per il tasto Ferma). Verificato empiricamente sulla rete Sicilia (338 nodi/348 condotte, 24h con compressore): **20m02s → 8m32s** (-57%), 24/24 convergenti.
 
 ### 🟠 9.2.2 Fallback `python_exe` pericoloso — `dashboard.py:116-118`
 ```python
@@ -154,8 +165,8 @@ Nel loop, se `c_ref == 0` si fa `continue` senza avviare il thread (righe 1910-1
 `self._active_sim_threads = []` all'avvio del batch: se l'utente clicca «Avvia» mentre un batch precedente è ancora in corso, i riferimenti ai `QThread` in esecuzione vengono persi → l'oggetto C++ può essere distrutto mentre gira → **crash di QGIS**. Serve una guardia: rifiutare un nuovo batch se `any(t.isRunning() for t in self._active_sim_threads)`.
 
 ### 🟠 9.2.5 «Ferma» inefficace nel batch e in modalità nativa
-- Batch: i `SimWorker` non sono memorizzati da nessuna parte (solo i thread, in `_active_sim_threads`); `_stop_simulation` itera `_active_sim_workers`, **mai creato** → no-op. (Già in §2/§3 del report esistente; qui confermato nel contesto batch.)
-- Nativa (`use_subprocess=False`): `cancel()` (dashboard.py:25-38) uccide solo `self._proc`, che nel path nativo è `None`; `self._cancelled` non è mai controllato dentro `run_simulation`. Quindi in modalità nativa «Ferma» non ferma nulla.
+- Batch: **RIVERIFICATO 03/08/2026, RISOLTO** — `_active_sim_workers` è ora creato e popolato in `_start_simulation` (`self._active_sim_workers.append(worker)`), e `_stop_simulation` lo itera davvero chiamando `.cancel()` su ciascuno. Non più no-op nel codice attuale.
+- Nativa (`use_subprocess=False`): non riverificato in dettaglio in questa sessione — probabile ancora presente, da controllare prima di affidarsi al tasto Ferma in modalità nativa.
 
 ### 🟡 9.2.6 Race sul logger globale in modalità nativa batch
 `run_simulation` riconfigura a livello di **processo** `logging.getLogger("GasNetSim")` e `...newton_raphson` (level/propagate/handler — worker_logic.py:27-31, 266-296). Con `use_subprocess=False` + 24 `QThread` nello stesso processo, i thread riconfigurano concorrentemente lo stesso logger globale → stato di logging non deterministico e handler di file in contesa. In modalità subprocess il problema non si pone (ogni processo ha il proprio logging).

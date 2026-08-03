@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+import time
 from .tab_verifica import VerificaTab
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
@@ -9,6 +11,575 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor, QTextCharFormat, QTextCursor
+
+from .i18n import tr, register
+
+register({
+    # ── Tab ──────────────────────────────────────────────────────────────────
+    "mapping.tab0_title": {"it": "0. Verifica Condotte", "en": "0. Check Pipelines"},
+    "mapping.tab1_title": {"it": "1. Prepara e Simula", "en": "1. Prepare & Simulate"},
+    "mapping.tab2_title": {"it": "2. Visualizzazione Risultati", "en": "2. View Results"},
+
+    # ── Blocco 1 — Dati di input ────────────────────────────────────────────
+    "mapping.grp_input": {"it": "Dati di Input", "en": "Input Data"},
+    "mapping.row_pipes_layer": {"it": "Layer condotte:", "en": "Pipeline layer:"},
+    "mapping.row_nodes_layer": {"it": "Layer nodi:", "en": "Node layer:"},
+    "mapping.none_item": {"it": "-- nessuno --", "en": "-- none --"},
+    "mapping.none_placeholder_item": {"it": "-- nessuno (usa placeholder) --", "en": "-- none (use placeholder) --"},
+    "mapping.lbl_dem": {"it": "DEM (raster):", "en": "DEM (raster):"},
+    "mapping.placeholder_out_folder": {"it": "Cartella dove salvare i CSV", "en": "Folder to save the CSVs"},
+    "mapping.row_out_folder": {"it": "Cartella output:", "en": "Output folder:"},
+    "mapping.row_ora": {"it": "Ora del giorno:", "en": "Hour of day:"},
+    "mapping.chk_sim24": {"it": "Simula 24 ore in parallelo (0-23)", "en": "Simulate 24 hours in parallel (0-23)"},
+    "mapping.chk_sim24_tooltip": {
+        "it": "Avvia la simulazione contemporanea per tutte le 24 ore.",
+        "en": "Starts the simulation simultaneously for all 24 hours.",
+    },
+
+    # ── Blocco 2 — Modalità collasso ────────────────────────────────────────
+    "mapping.chk_already_collapsed": {
+        "it": "Rete già collassata  (salta il collasso, usa layer esistenti)",
+        "en": "Network already collapsed  (skip collapse, use existing layers)",
+    },
+    "mapping.grp_collapse_mode": {"it": "Opzioni Collasso", "en": "Collapse Options"},
+    "mapping.diam_field_tooltip": {
+        "it": "Campo del diametro nel layer condotte.\n"
+              "Auto-selezionato cercando (nell'ordine):\n"
+              "  {cands}\n"
+              "Se nessuno corrisponde, seleziona manualmente.",
+        "en": "Diameter field in the pipeline layer.\n"
+              "Auto-selected by searching (in order):\n"
+              "  {cands}\n"
+              "If none match, select manually.",
+    },
+    "mapping.unit_in": {"it": "pollici (in)", "en": "inches (in)"},
+    "mapping.unit_m": {"it": "metri (m)", "en": "metres (m)"},
+    "mapping.unit_cm": {"it": "centimetri (cm)", "en": "centimetres (cm)"},
+    "mapping.lbl_unit": {"it": "Unità:", "en": "Unit:"},
+    "mapping.row_diameter": {"it": "Diametro:", "en": "Diameter:"},
+    "mapping.row_ref_field": {"it": "Campo reference:", "en": "Reference field:"},
+    "mapping.ref_val_placeholder": {"it": "tutti", "en": "all"},
+    "mapping.grp_collapsed_layers": {"it": "Layer Già Collassati", "en": "Already Collapsed Layers"},
+    "mapping.grp_field_pipes": {"it": "Mappatura Campi Condotte", "en": "Pipeline Field Mapping"},
+    "mapping.row_pipe_id": {"it": "ID pipe:", "en": "Pipe ID:"},
+    "mapping.row_node_ab": {"it": "Nodo A / B:", "en": "Node A / B:"},
+    "mapping.row_length": {"it": "Lunghezza:", "en": "Length:"},
+    "mapping.grp_field_nodes": {"it": "Mappatura Campi Nodi", "en": "Node Field Mapping"},
+    "mapping.row_node_id": {"it": "ID nodo:", "en": "Node ID:"},
+    "mapping.row_altitude": {"it": "Altitudine:", "en": "Altitude:"},
+    "mapping.ref_value_tooltip": {
+        "it": "Valore del campo che identifica i nodi reference.\n"
+              "Esempi:\n"
+              "  '1'          se campo 'matched'\n"
+              "  'reference'  se campo 'Type'\n"
+              "  '1'          se campo 'is_ref'",
+        "en": "Value of the field that identifies reference nodes.\n"
+              "Examples:\n"
+              "  '1'          if field 'matched'\n"
+              "  'reference'  if field 'Type'\n"
+              "  '1'          if field 'is_ref'",
+    },
+    "mapping.row_ref_flag": {"it": "Flag reference:", "en": "Reference flag:"},
+    "mapping.cb_f_flow_tooltip": {
+        "it": "Campo con i consumi orari di gas per ogni nodo junction.\n"
+              "Formato atteso: 24 valori numerici separati dal carattere\n"
+              "scelto in 'Separatore flussi' (es: 1.23;0.98;0.87;...)\n"
+              "Unita': Smc/h (metri cubi standard per ora).\n"
+              "Viene usato il valore all'ora impostata in 'Ora del giorno'.\n"
+              "Se non selezionato: usa il valore 'Flusso placeholder'.",
+        "en": "Field with hourly gas consumption for each junction node.\n"
+              "Expected format: 24 numeric values separated by the character\n"
+              "chosen in 'Flow separator' (e.g. 1.23;0.98;0.87;...)\n"
+              "Unit: Sm3/h (standard cubic metres per hour).\n"
+              "The value at the hour set in 'Hour of day' is used.\n"
+              "If not selected: uses the 'Placeholder flow' value.",
+    },
+    "mapping.row_flow_hourly": {"it": "Flusso orario nodi:", "en": "Hourly node flow:"},
+    "mapping.flow_hint_b": {
+        "it": "<i style='color:gray'>24 val. Smc/h separati (es: 1.2;0.9;0.8;...)</i>",
+        "en": "<i style='color:gray'>24 Sm3/h values, separated (e.g. 1.2;0.9;0.8;...)</i>",
+    },
+
+    # ── Blocco 3 — Compressori ───────────────────────────────────────────────
+    "mapping.chk_enable_compressor": {"it": "⚙  Compressori", "en": "⚙  Compressors"},
+    "mapping.chk_enable_compressor_tooltip": {
+        "it": "Attiva la gestione dei nodi compressore.",
+        "en": "Enables management of compressor nodes.",
+    },
+    "mapping.grp_compressor": {"it": "Opzioni Compressore", "en": "Compressor Options"},
+    "mapping.cb_f_nodes_comp_field_tooltip": {
+        "it": "Campo che identifica i nodi compressore.",
+        "en": "Field that identifies compressor nodes.",
+    },
+    "mapping.row_field_value": {"it": "Campo e Valore:", "en": "Field and Value:"},
+    "mapping.txt_nodes_comp_val_placeholder": {"it": "es. compressore", "en": "e.g. compressor"},
+    "mapping.txt_nodes_comp_val_tooltip": {
+        "it": "Valore del campo che identifica i nodi compressore.",
+        "en": "Value of the field that identifies compressor nodes.",
+    },
+    "mapping.lbl_pressure_out": {"it": "Pressione OUT [bar]:", "en": "Pressure OUT [bar]:"},
+    "mapping.comp_pout_tooltip": {
+        "it": "Campo con pressione di uscita [bar] oppure VALORE FISSO (es. 70.0).\n"
+              "Se valorizzato, sovrascrive 'ratio' calcolando ratio = p_out / p_in.",
+        "en": "Field with outlet pressure [bar] or a FIXED VALUE (e.g. 70.0).\n"
+              "If set, it overrides 'ratio' by computing ratio = p_out / p_in.",
+    },
+    "mapping.chk_use_pcm": {"it": "Usa PCM (Pressure Control Mode)", "en": "Use PCM (Pressure Control Mode)"},
+    "mapping.row_parameters": {"it": "Parametri:", "en": "Parameters:"},
+
+    # ── Blocco 4 — Opzioni avanzate ──────────────────────────────────────────
+    "mapping.chk_advanced": {"it": "⚙  Opzioni avanzate", "en": "⚙  Advanced options"},
+    "mapping.grp_advanced": {"it": "Opzioni Avanzate", "en": "Advanced Options"},
+    "mapping.chk_no_collapse": {
+        "it": "Preserva nodi intermedi (quota reale da DEM)",
+        "en": "Preserve intermediate nodes (real elevation from DEM)",
+    },
+    "mapping.chk_no_collapse_tooltip": {
+        "it": "Se attivato, NON esegue il collasso topologico.\n"
+              "Tutti i nodi intermedi vengono mantenuti, usando la quota\n"
+              "reale dal raster DEM per ogni nodo della rete.\n"
+              "Genera reti più grandi ma con differenze di quota accurate.",
+        "en": "If enabled, topological collapse is NOT performed.\n"
+              "All intermediate nodes are kept, using the real elevation\n"
+              "from the DEM raster for every node in the network.\n"
+              "Produces larger networks but with accurate elevation differences.",
+    },
+    "mapping.cb_f_nodes_flow_tooltip": {
+        "it": "Campo con i consumi orari di gas per ogni nodo junction (Mod. A).\n"
+              "Formato: 24 valori Smc/h separati da ';'.",
+        "en": "Field with hourly gas consumption for each junction node (Mode A).\n"
+              "Format: 24 Sm3/h values separated by ';'.",
+    },
+    "mapping.adv_flow_hint": {
+        "it": "<i style='color:gray'>24 val. Smc/h sep. da ';'</i>",
+        "en": "<i style='color:gray'>24 Sm3/h values sep. by ';'</i>",
+    },
+    "mapping.row_radius": {"it": "Raggio aggancio:", "en": "Snap radius:"},
+    "mapping.sep_semicolon": {"it": ";  (punto e virgola)", "en": ";  (semicolon)"},
+    "mapping.sep_comma": {"it": ",  (virgola)", "en": ",  (comma)"},
+    "mapping.sep_pipe": {"it": "|  (pipe)", "en": "|  (pipe)"},
+    "mapping.sep_colon": {"it": ":  (due punti)", "en": ":  (colon)"},
+    "mapping.sep_space": {"it": "spazio", "en": "space"},
+    "mapping.sep_tab": {"it": "\\t  (tabulazione)", "en": "\\t  (tab)"},
+    "mapping.row_separator": {"it": "Separatore flussi:", "en": "Flow separator:"},
+    "mapping.row_pressure_ref": {"it": "Pressione reference:", "en": "Reference pressure:"},
+    "mapping.row_temperature": {"it": "Temperatura:", "en": "Temperature:"},
+    "mapping.row_placeholder_flow": {"it": "Flusso placeholder:", "en": "Placeholder flow:"},
+    "mapping.row_roughness": {"it": "Rugosità condotte:", "en": "Pipe roughness:"},
+    "mapping.row_min_export_flow": {"it": "Flusso minimo export:", "en": "Minimum export flow:"},
+    "mapping.row_result_decimals": {"it": "Decimali layer risultato:", "en": "Result layer decimals:"},
+    "mapping.chk_show_collapsed": {
+        "it": "Mostra layer collassato nella legenda",
+        "en": "Show collapsed layer in the legend",
+    },
+    "mapping.chk_show_orig_pipes": {
+        "it": "Crea layer condotte originali colorato",
+        "en": "Create coloured original pipelines layer",
+    },
+
+    # ── Blocco 5 — Parametri solutore ────────────────────────────────────────
+    "mapping.chk_solver": {"it": "⚙  Parametri solutore", "en": "⚙  Solver parameters"},
+    "mapping.grp_solver": {"it": "Parametri Solutore", "en": "Solver Parameters"},
+    "mapping.row_maxiter": {"it": "Max iterazioni:", "en": "Max iterations:"},
+    "mapping.spin_tol_tooltip": {
+        "it": "Es. 1.0 Sm³/s equivale a ben 3600 Sm³/h di errore nel bilancio del nodo.",
+        "en": "E.g. 1.0 Sm³/s equals as much as 3600 Sm³/h of error in the node balance.",
+    },
+    "mapping.txt_tol_smc_h_tooltip": {
+        "it": "Tolleranza equivalente in Sm³/h (= valore in Sm³/s × 3600). Solo lettura.",
+        "en": "Tolerance equivalent in Sm³/h (= value in Sm³/s × 3600). Read-only.",
+    },
+    "mapping.row_tol": {"it": "Tolleranza [Sm³/s]:", "en": "Tolerance [Sm³/s]:"},
+    "mapping.row_urf": {"it": "URF:", "en": "URF:"},
+    "mapping.chk_autocal": {"it": "Auto-calibra tol e URF", "en": "Auto-calibrate tol and URF"},
+    "mapping.chk_autocal_tooltip": {
+        "it": "Imposta automaticamente tol e URF in base alla dimensione della rete:\n"
+              "  < 100 nodi  → tol=0.1,  urf=1.5\n"
+              "  < 500 nodi  → tol=1.0,  urf=2.0\n"
+              "  < 2000 nodi → tol=5.0,  urf=2.5\n"
+              "  ≥ 2000 nodi → tol=10.0, urf=3.0",
+        "en": "Automatically sets tol and URF based on network size:\n"
+              "  < 100 nodes  → tol=0.1,  urf=1.5\n"
+              "  < 500 nodes  → tol=1.0,  urf=2.0\n"
+              "  < 2000 nodes → tol=5.0,  urf=2.5\n"
+              "  ≥ 2000 nodes → tol=10.0, urf=3.0",
+    },
+    "mapping.chk_refine": {"it": "Affina precisione", "en": "Refine precision"},
+    "mapping.chk_refine_tooltip": {
+        "it": "Dopo la prima convergenza, ritenta con tol÷10 fino a 1e-4.\n"
+              "Funziona sia con 'Auto-calibra' attivo sia con tol impostata a mano:\n"
+              "il valore da riportare e' sempre la tolleranza FINALE.",
+        "en": "After the first convergence, retries with tol÷10 down to 1e-4.\n"
+              "Works both with 'Auto-calibrate' enabled and with tol set manually:\n"
+              "the value to report is always the FINAL tolerance.",
+    },
+    "mapping.chk_multiprocess": {"it": "Forza Multiprocesso (Subprocess)", "en": "Force Multiprocess (Subprocess)"},
+    "mapping.chk_multiprocess_tooltip": {
+        "it": "Crea processi Python indipendenti per bypassare il GIL di Python\n"
+              "e usare il 100% della CPU nelle simulazioni parallele (consigliato).",
+        "en": "Creates independent Python processes to bypass Python's GIL\n"
+              "and use 100% of the CPU in parallel simulations (recommended).",
+    },
+
+    # ── Blocco 6 — Composizione gas ──────────────────────────────────────────
+    "mapping.grp_gas": {"it": "Composizione Gas", "en": "Gas Composition"},
+    "mapping.gas_mazara": {"it": "SNAM — Mazara del Vallo (gas algerino)", "en": "SNAM — Mazara del Vallo (Algerian gas)"},
+    "mapping.gas_gela": {"it": "SNAM — Gela (gas libico)", "en": "SNAM — Gela (Libyan gas)"},
+    "mapping.gas_pure_methane": {"it": "Metano puro (100% CH4)", "en": "Pure methane (100% CH4)"},
+    "mapping.gas_typical_natural": {"it": "Gas naturale tipico (94% CH4)", "en": "Typical natural gas (94% CH4)"},
+    "mapping.gas_pure_hydrogen": {"it": "Idrogeno puro (H2)", "en": "Pure hydrogen (H2)"},
+    "mapping.gas_custom": {"it": "Personalizzato...", "en": "Custom..."},
+    "mapping.row_gas_base": {"it": "Gas base:", "en": "Base gas:"},
+    "mapping.spin_h2_pct_tooltip": {
+        "it": "Percentuale molare di H₂ da aggiungere al gas base.\n"
+              "La composizione base viene riscalata proporzionalmente.\n"
+              "Esempio: 20% H₂ + SNAM Mazara → 80% della composizione Mazara + 20% H₂.",
+        "en": "Molar percentage of H₂ to add to the base gas.\n"
+              "The base composition is rescaled proportionally.\n"
+              "Example: 20% H₂ + SNAM Mazara → 80% of the Mazara composition + 20% H₂.",
+    },
+    "mapping.row_h2_addition": {"it": "Aggiunta H₂:", "en": "H₂ addition:"},
+    "mapping.btn_reset_h2_tooltip": {"it": "Azzera percentuale H₂", "en": "Reset H₂ percentage"},
+    "mapping.txt_gas_comp_placeholder": {
+        "it": "nome preset  oppure  {'methane': 0.9, ...}",
+        "en": "preset name  or  {'methane': 0.9, ...}",
+    },
+    "mapping.txt_gas_comp_tooltip": {
+        "it": "Composizione che viene scritta nel CSV di input.\n"
+              "Viene aggiornata automaticamente quando si cambia il preset o la % H₂.\n"
+              "Modificabile manualmente per composizioni personalizzate.",
+        "en": "Composition written into the input CSV.\n"
+              "Updated automatically when the preset or the H₂ % changes.\n"
+              "Can be edited manually for custom compositions.",
+    },
+    "mapping.row_gas_export": {"it": "Composizione export:", "en": "Export composition:"},
+
+    # ── Pulsanti / Log Tab 1 ─────────────────────────────────────────────────
+    "mapping.btn_reload": {"it": "↺  Ricarica layer", "en": "↺  Reload layers"},
+    "mapping.btn_collapse": {"it": "> Genera CSV", "en": "> Generate CSV"},
+    "mapping.btn_collapse_from_layer": {"it": "> Genera CSV da Layer", "en": "> Generate CSV from Layer"},
+    "mapping.btn_collapse_tooltip": {
+        "it": "Esporta i CSV nella cartella di output selezionata.\n"
+              "Non avvia la simulazione.",
+        "en": "Exports the CSVs to the selected output folder.\n"
+              "Does not start the simulation.",
+    },
+    "mapping.chk_only_export": {"it": "Solo export CSV (non caricare in mappa)", "en": "CSV export only (do not load into the map)"},
+    "mapping.chk_only_export_tooltip": {
+        "it": "Velocizza simulazioni multiple saltando rendering e layer su QGIS.",
+        "en": "Speeds up multiple simulations by skipping QGIS rendering and layers.",
+    },
+    "mapping.btn_start_sim": {"it": "▶  Avvia Simulazione", "en": "▶  Start Simulation"},
+    "mapping.btn_start_sim_tooltip": {
+        "it": "Genera i CSV ed esegue la simulazione GasNetSim.\n"
+              "Il log compare qui a destra.",
+        "en": "Generates the CSVs and runs the GasNetSim simulation.\n"
+              "The log appears here on the right.",
+    },
+    "mapping.btn_stop_sim": {"it": "⏹  Ferma", "en": "⏹  Stop"},
+    "mapping.btn_stop_sim_tooltip": {
+        "it": "Interrompe la simulazione in corso senza chiudere QGIS.",
+        "en": "Stops the running simulation without closing QGIS.",
+    },
+    "mapping.btn_campaign": {"it": "\U0001F4C5  Campagna (cartella di giorni)", "en": "\U0001F4C5  Campaign (folder of days)"},
+    "mapping.btn_campaign_tooltip": {
+        "it": "Seleziona una cartella con i file-giorno (.geojson dei nodi).\n"
+              "Per ciascuno esegue il batch 24 ore in sequenza (solo file, niente mappa)\n"
+              "e stampa un riepilogo finale della campagna.",
+        "en": "Select a folder with the day files (node .geojson).\n"
+              "For each one, runs the 24-hour batch in sequence (files only, no map)\n"
+              "and prints a final campaign summary.",
+    },
+    "mapping.lbl_log": {"it": "Log:", "en": "Log:"},
+    "mapping.act_clear_log": {"it": "\U0001f5d1  Svuota log", "en": "\U0001f5d1  Clear log"},
+
+    # ── Tab 2 — Visualizzazione ──────────────────────────────────────────────
+    "mapping.grp_recolor": {"it": "Visualizza risultati su layer", "en": "View results on layer"},
+    "mapping.lbl_rc_hint": {
+        "it": "<i style='color:gray;font-size:10px;'>"
+              "Dopo ogni simulazione i campi vengono compilati automaticamente.<br>"
+              "Puoi selezionare manualmente qualsiasi layer vettoriale del progetto<br>"
+              "(risultati di simulazioni precedenti inclusi).</i>",
+        "en": "<i style='color:gray;font-size:10px;'>"
+              "After each simulation the fields are filled in automatically.<br>"
+              "You can manually select any vector layer in the project<br>"
+              "(including results from previous simulations).</i>",
+    },
+    "mapping.cb_viz_nodes_lyr_tooltip": {
+        "it": "Layer nodi su cui applicare la colorimetria.\n"
+              "I layer R-N-* (risultati) appaiono in cima alla lista.",
+        "en": "Node layer to apply the colouring to.\n"
+              "R-N-* (result) layers appear at the top of the list.",
+    },
+    "mapping.row_color_nodes": {"it": "Colora nodi per:", "en": "Colour nodes by:"},
+    "mapping.cb_viz_nodes_size_tooltip": {
+        "it": "Dimensiona i cerchi nodi proporzionalmente al campo scelto.\n"
+              "Seleziona '-- nessuno --' per usare dimensione fissa.",
+        "en": "Sizes the node circles proportionally to the chosen field.\n"
+              "Select '-- none --' to use a fixed size.",
+    },
+    "mapping.row_size_nodes": {"it": "Dimensiona nodi per:", "en": "Size nodes by:"},
+    "mapping.cb_viz_pipes_lyr_tooltip": {
+        "it": "Layer condotte su cui applicare la colorimetria.\n"
+              "I layer R-P-* (risultati) appaiono in cima alla lista.",
+        "en": "Pipeline layer to apply the colouring to.\n"
+              "R-P-* (result) layers appear at the top of the list.",
+    },
+    "mapping.row_color_pipes": {"it": "Colora condotte per:", "en": "Colour pipelines by:"},
+    "mapping.chk_viz_arrows": {"it": "Frecce direzione flusso", "en": "Flow direction arrows"},
+    "mapping.btn_viz_refresh_tooltip": {
+        "it": "Aggiorna lista layer disponibili",
+        "en": "Refresh the list of available layers",
+    },
+    "mapping.btn_viz_apply": {"it": "▶  Applica colorimetria", "en": "▶  Apply colouring"},
+    "mapping.grp_sim_opts": {"it": "Impostazioni per la prossima simulazione", "en": "Settings for the next simulation"},
+    "mapping.lbl_sim_opts_hint": {
+        "it": "Configura i campi e la colorimetria che verranno usati\n"
+              "quando si avvia una nuova simulazione.",
+        "en": "Configure the fields and colouring that will be used\n"
+              "when a new simulation is started.",
+    },
+    "mapping.grp_nodes": {"it": "Nodi", "en": "Nodes"},
+    "mapping.grp_pipes": {"it": "Condotte", "en": "Pipelines"},
+    "mapping.row_color_by": {"it": "Colora per:", "en": "Colour by:"},
+    "mapping.row_size_by": {"it": "Dimensiona per:", "en": "Size by:"},
+    "mapping.cb_res_nodes_size_tooltip": {
+        "it": "Se selezionato, dimensiona i cerchi dei nodi\n"
+              "proporzionalmente al valore assoluto del campo scelto.\n"
+              "Utile per visualizzare i consumi come bolle.",
+        "en": "If selected, sizes the node circles\n"
+              "proportionally to the absolute value of the chosen field.\n"
+              "Useful for visualising consumption as bubbles.",
+    },
+
+    # Etichette campi risultato (combo "Colora/Dimensiona per")
+    "mapping.f_pressure_bar": {"it": "Pressione (bar)", "en": "Pressure (bar)"},
+    "mapping.f_vol_flow": {"it": "Consumo (sm3/s)", "en": "Consumption (sm3/s)"},
+    "mapping.f_energy_flow": {"it": "Consumo energetico (MW)", "en": "Energy consumption (MW)"},
+    "mapping.f_temp_k": {"it": "Temperatura (K)", "en": "Temperature (K)"},
+    "mapping.f_sp_gravity": {"it": "Spec. gravity", "en": "Spec. gravity"},
+    "mapping.f_z_factor": {"it": "Z-factor", "en": "Z-factor"},
+    "mapping.f_hhv": {"it": "HHV (MJ/sm3)", "en": "HHV (MJ/sm3)"},
+    "mapping.f_wobbe": {"it": "Wobbe (MJ/sm3)", "en": "Wobbe (MJ/sm3)"},
+    "mapping.f_density": {"it": "Densità (kg/m3)", "en": "Density (kg/m3)"},
+    "mapping.f_std_density": {"it": "Dens. std (kg/sm3)", "en": "Std density (kg/sm3)"},
+    "mapping.f_molar_mass": {"it": "Massa molare (g/mol)", "en": "Molar mass (g/mol)"},
+    "mapping.f_h2_pct": {"it": "H₂ (%)", "en": "H₂ (%)"},
+    "mapping.f_throughput": {"it": "Throughput (Smc/h)", "en": "Throughput (Sm3/h)"},
+
+    # Etichette abbreviate checkbox campi nodo
+    "mapping.fs_pressure": {"it": "Pressione", "en": "Pressure"},
+    "mapping.fs_vol_flow": {"it": "Consumo sm3/s", "en": "Consumption sm3/s"},
+    "mapping.fs_energy_flow": {"it": "Consumo MW", "en": "Consumption MW"},
+    "mapping.fs_temp": {"it": "Temp.", "en": "Temp."},
+    "mapping.fs_sp_gravity": {"it": "Sp.gravity", "en": "Sp.gravity"},
+    "mapping.fs_hhv": {"it": "HHV", "en": "HHV"},
+    "mapping.fs_wobbe": {"it": "Wobbe", "en": "Wobbe"},
+    "mapping.fs_density": {"it": "Densità", "en": "Density"},
+    "mapping.fs_std_density": {"it": "Dens.std", "en": "Std density"},
+    "mapping.fs_mm": {"it": "MM", "en": "MM"},
+    "mapping.fs_gas_comp": {"it": "Comp.gas", "en": "Gas comp."},
+    "mapping.fs_throughput": {"it": "Throughput", "en": "Throughput"},
+    "mapping.fs_node_type": {"it": "Tipo nodo", "en": "Node type"},
+
+    # Etichette combo/checkbox campi condotte
+    "mapping.fp_flow_abs": {"it": "Portata (Smc/h)", "en": "Flow (Sm3/h)"},
+    "mapping.fp_velocity": {"it": "Velocità (m/s)", "en": "Velocity (m/s)"},
+    "mapping.fp_avg_pressure": {"it": "Press. media (bar)", "en": "Avg pressure (bar)"},
+    "mapping.fp_density": {"it": "Densità (kg/m3)", "en": "Density (kg/m3)"},
+    "mapping.fps_flow_signed": {"it": "Portata Smc/h", "en": "Flow Sm3/h"},
+    "mapping.fps_flow_abs": {"it": "|Portata| Smc/h", "en": "|Flow| Sm3/h"},
+    "mapping.fps_velocity": {"it": "Velocità", "en": "Velocity"},
+    "mapping.fps_avg_pressure": {"it": "Press.media", "en": "Avg pressure"},
+    "mapping.fps_density": {"it": "Densità", "en": "Density"},
+
+    "mapping.chk_flow_arrows": {"it": "Mostra frecce direzione flusso", "en": "Show flow direction arrows"},
+    "mapping.chk_flow_arrows_tooltip": {
+        "it": "Aggiunge una freccia al centro di ogni condotta, orientata nel verso del flusso del gas.",
+        "en": "Adds an arrow at the centre of each pipeline, oriented in the direction of gas flow.",
+    },
+
+    "mapping.grp_export": {"it": "Esporta dati", "en": "Export data"},
+    "mapping.row_layer": {"it": "Layer:", "en": "Layer:"},
+    "mapping.row_decimals": {"it": "Decimali:", "en": "Decimals:"},
+    "mapping.spin_viz_decimals_tooltip": {
+        "it": "Cifre decimali per i valori numerici nel CSV",
+        "en": "Decimal digits for numeric values in the CSV",
+    },
+    "mapping.btn_export_csv": {"it": "Esporta CSV", "en": "Export CSV"},
+
+    # ── Dialog avvisi rete ───────────────────────────────────────────────────
+    "mapping.warn_dlg_title": {"it": "⚠ Avvisi rete", "en": "⚠ Network warnings"},
+    "mapping.warn_dlg_lbl": {"it": "<b>Problemi rilevati durante il collasso:</b>", "en": "<b>Problems detected during collapse:</b>"},
+    "mapping.btn_zoom": {"it": "\U0001F50D  Zoom su condotte", "en": "\U0001F50D  Zoom to pipelines"},
+    "mapping.btn_zoom_tooltip": {
+        "it": "Centra e zooma la mappa sulle condotte problematiche.",
+        "en": "Centres and zooms the map on the problem pipelines.",
+    },
+    "mapping.btn_flash": {"it": "\U0001F526  Flash", "en": "\U0001F526  Flash"},
+    "mapping.btn_flash_tooltip": {
+        "it": "Fa lampeggiare sulla mappa le condotte con problemi.\n"
+              "Puoi cliccare più volte.",
+        "en": "Flashes the problem pipelines on the map.\n"
+              "You can click multiple times.",
+    },
+    "mapping.warn_no_geom": {
+        "it": "<i style='color:gray'>Coordinate non disponibili per il flash<br>"
+              "(condotte generate dal collasso, non dal layer originale).</i>",
+        "en": "<i style='color:gray'>Coordinates not available for flashing<br>"
+              "(pipelines generated by the collapse, not from the original layer).</i>",
+    },
+
+    # ── Dialoghi validazione / errori simulazione ───────────────────────────
+    "mapping.no_ref_title": {"it": "Nessun nodo reference", "en": "No reference node"},
+    "mapping.no_ref_msg": {
+        "it": "Nessun nodo reference trovato nel layer nodi.\n\n"
+              "La simulazione richiede almeno un nodo a pressione fissa.\n"
+              "Verifica il campo 'Flag reference' e il suo valore.",
+        "en": "No reference node found in the node layer.\n\n"
+              "The simulation requires at least one fixed-pressure node.\n"
+              "Check the 'Reference flag' field and its value.",
+    },
+    "mapping.err_no_pipes_a": {"it": "Nessun layer condotte selezionato (Modalità A).", "en": "No pipeline layer selected (Mode A)."},
+    "mapping.warn_no_nodes_layer": {
+        "it": "Nessun layer nodi selezionato: non ci saranno nodi reference.\n"
+              "La simulazione fallirà senza almeno un nodo a pressione fissa.",
+        "en": "No node layer selected: there will be no reference nodes.\n"
+              "The simulation will fail without at least one fixed-pressure node.",
+    },
+    "mapping.warn_no_ref_field_a": {
+        "it": "Campo 'Flag reference' non selezionato nel layer nodi.\n"
+              "GasNetSim tratterà tutti i nodi agganciati come reference.",
+        "en": "'Reference flag' field not selected in the node layer.\n"
+              "GasNetSim will treat all snapped nodes as reference.",
+    },
+    "mapping.warn_empty_ref_val_a": {
+        "it": "Valore 'Flag reference' vuoto: tutti i nodi agganciati\n"
+              "saranno trattati come reference (potrebbe non essere corretto).",
+        "en": "'Reference flag' value empty: all snapped nodes\n"
+              "will be treated as reference (this might not be correct).",
+    },
+    "mapping.err_no_pipes_b": {"it": "Nessun layer condotte collassate selezionato (Modalità B).", "en": "No collapsed pipeline layer selected (Mode B)."},
+    "mapping.err_no_nodes_b": {"it": "Nessun layer nodi collassati selezionato (Modalità B).", "en": "No collapsed node layer selected (Mode B)."},
+    "mapping.warn_no_ref_field_b": {
+        "it": "Campo 'Flag reference' non selezionato nel layer nodi.\n"
+              "GasNetSim tratterà tutti i nodi come reference.",
+        "en": "'Reference flag' field not selected in the node layer.\n"
+              "GasNetSim will treat all nodes as reference.",
+    },
+    "mapping.warn_empty_ref_val_b": {
+        "it": "Valore 'Flag reference' vuoto: tutti i nodi saranno\n"
+              "trattati come reference (potrebbe non essere corretto).",
+        "en": "'Reference flag' value empty: all nodes will be\n"
+              "treated as reference (this might not be correct).",
+    },
+    "mapping.warn_comp_pout": {
+        "it": "Hai attivato il compressore ma NON hai specificato un campo o un valore numerico per 'Pressione OUT'.\n"
+              "Il simulatore utilizzerà un ratio di default debole (1.1) che causerà molto probabilmente\n"
+              "il fallimento della simulazione (stallo a 0.00 bar) in condizioni di forte carico.",
+        "en": "You enabled the compressor but did NOT specify a field or numeric value for 'Pressure OUT'.\n"
+              "The simulator will use a weak default ratio (1.1) which will most likely cause\n"
+              "the simulation to fail (stalling at 0.00 bar) under heavy load conditions.",
+    },
+    "mapping.err_missing_data_title": {"it": "Dati mancanti", "en": "Missing data"},
+    "mapping.err_missing_data_prefix": {
+        "it": "Non è possibile avviare la simulazione:\n\n",
+        "en": "The simulation cannot be started:\n\n",
+    },
+    "mapping.warn_check_params_title": {"it": "Verifica parametri", "en": "Check parameters"},
+    "mapping.warn_check_params_prefix": {
+        "it": "Attenzione — potrebbero mancare dati importanti:\n\n",
+        "en": "Warning — some important data might be missing:\n\n",
+    },
+    "mapping.warn_check_params_suffix": {
+        "it": "\n\nVuoi continuare comunque?",
+        "en": "\n\nDo you want to continue anyway?",
+    },
+
+    # ── Dialoghi Campagna ────────────────────────────────────────────────────
+    "mapping.campaign_title": {"it": "Campagna", "en": "Campaign"},
+    "mapping.campaign_need_pipes": {
+        "it": "Seleziona prima il layer delle CONDOTTE (la rete è la stessa per tutti i giorni).",
+        "en": "First select the PIPELINE layer (the network is the same for all days).",
+    },
+    "mapping.campaign_source_title": {"it": "Sorgente dati Campagna", "en": "Campaign data source"},
+    "mapping.campaign_source_question": {
+        "it": "Da dove vuoi importare i giorni (nodi) per la simulazione?",
+        "en": "Where do you want to import the days (nodes) for the simulation from?",
+    },
+    "mapping.campaign_btn_files": {"it": "\U0001F4C1 Scegli file dal disco (.geojson, .shp, ecc)", "en": "\U0001F4C1 Choose files from disk (.geojson, .shp, etc)"},
+    "mapping.campaign_btn_layers": {"it": "\U0001F5FA Scegli layer già caricati in QGIS", "en": "\U0001F5FA Choose layers already loaded in QGIS"},
+    "mapping.campaign_files_dlg_caption": {
+        "it": "Seleziona i file-giorno (.geojson dei nodi) — Ctrl+A per tutti",
+        "en": "Select the day files (node .geojson) — Ctrl+A to select all",
+    },
+    "mapping.campaign_files_filter": {
+        "it": "GeoJSON (*.geojson *.json);;Tutti i file (*)",
+        "en": "GeoJSON (*.geojson *.json);;All files (*)",
+    },
+    "mapping.campaign_layers_title": {"it": "Seleziona layer per la Campagna", "en": "Select layers for the Campaign"},
+    "mapping.campaign_layers_hint": {
+        "it": "Spunta i layer dei nodi (giorni) da simulare in sequenza:",
+        "en": "Check the node layers (days) to simulate in sequence:",
+    },
+    "mapping.campaign_out_dir_caption": {"it": "Cartella di OUTPUT della campagna", "en": "Campaign OUTPUT folder"},
+    "mapping.campaign_more_files": {"it": "\n  … e altri {n}", "en": "\n  … and {n} more"},
+    "mapping.campaign_start_title": {"it": "Avvio campagna", "en": "Start campaign"},
+    "mapping.campaign_start_msg": {
+        "it": "Eseguo il batch 24 ore per {n_files} giorni "
+              "({n_sims} simulazioni totali), uno dopo l'altro.\n\n"
+              "{names}\n\nProcedo?",
+        "en": "Running the 24-hour batch for {n_files} days "
+              "({n_sims} total simulations), one after another.\n\n"
+              "{names}\n\nProceed?",
+    },
+    "mapping.browse_out_dir_caption": {"it": "Seleziona cartella output CSV", "en": "Select CSV output folder"},
+
+    # ── Dialog export CSV (Tab 2) ────────────────────────────────────────────
+    "mapping.export_no_layer_title": {"it": "Nessun layer", "en": "No layer"},
+    "mapping.export_no_layer_msg": {"it": "Seleziona un layer da esportare.", "en": "Select a layer to export."},
+    "mapping.export_layer_not_found_title": {"it": "Layer non trovato", "en": "Layer not found"},
+    "mapping.export_layer_not_found_msg": {"it": "Il layer non è più disponibile.", "en": "The layer is no longer available."},
+    "mapping.export_csv_dialog_title": {"it": "Esporta CSV", "en": "Export CSV"},
+    "mapping.export_done_title": {"it": "Esportazione completata", "en": "Export complete"},
+    "mapping.export_done_msg": {
+        "it": "Layer esportato con {decimals} decimali:\n{filepath}",
+        "en": "Layer exported with {decimals} decimals:\n{filepath}",
+    },
+    "mapping.export_error_title": {"it": "Errore esportazione", "en": "Export error"},
+    # Titoli/riepiloghi principali del log di esecuzione: sono gli unici
+    # messaggi dinamici tradotti (sono i "grandi annunci", non la
+    # diagnostica fine per-ora/per-iterazione, che resta in italiano).
+    "mapping.log_campaign_start": {
+        "it": "  CAMPAGNA: {ndays} giorni × 24 ore = {ntot} simulazioni",
+        "en": "  CAMPAIGN: {ndays} days × 24 hours = {ntot} simulations",
+    },
+    "mapping.log_campaign_summary_title": {"it": "  RIEPILOGO CAMPAGNA", "en": "  CAMPAIGN SUMMARY"},
+    "mapping.log_campaign_days_done": {"it": "  Giorni completati:            {n}", "en": "  Days completed:               {n}"},
+    "mapping.log_campaign_days_full": {"it": "  Giorni con 24/24 converse:    {n}/{tot}", "en": "  Days with 24/24 converged:    {n}/{tot}"},
+    "mapping.log_campaign_sims_conv": {"it": "  Simulazioni converse totali:  {n}/{tot}", "en": "  Total converged simulations:  {n}/{tot}"},
+    "mapping.log_campaign_not_conv": {"it": "  ← NON converse: {hours}", "en": "  ← NOT converged: {hours}"},
+    "mapping.log_campaign_total_time": {"it": "  Tempo totale campagna:        {t}", "en": "  Total campaign time:          {t}"},
+    "mapping.log_batch24_start": {"it": "  AVVIO SIMULAZIONE 24 ORE (PARALLELO)", "en": "  STARTING 24-HOUR SIMULATION (PARALLEL)"},
+    "mapping.log_single_start": {"it": "  Avvio simulazione GasNetSim...", "en": "  Starting GasNetSim simulation..."},
+    "mapping.log_batch24_summary_title": {"it": "  RIEPILOGO BATCH 24 ORE (PARALLELO)", "en": "  24-HOUR BATCH SUMMARY (PARALLEL)"},
+    "mapping.log_batch24_converged": {"it": "  Simulazioni converse:     {n}/{tot}", "en": "  Converged simulations:    {n}/{tot}"},
+    "mapping.log_batch24_not_converged": {"it": "  NON converse (best iterate): {hours}", "en": "  NOT converged (best iterate): {hours}"},
+    "mapping.log_batch24_not_converged_note1": {
+        "it": "     → per queste ore il risultato è il miglior iterato,",
+        "en": "     → for these hours the result is the best iterate found,",
+    },
+    "mapping.log_batch24_not_converged_note2": {
+        "it": "       NON una soluzione convergente: verificarle.",
+        "en": "       NOT a converged solution: please check them.",
+    },
+    "mapping.log_batch24_skipped": {"it": "  Ore saltate (0 reference): {n}", "en": "  Hours skipped (0 reference): {n}"},
+    "mapping.log_batch24_total_time": {"it": "  Tempo totale (parallelo): {t}", "en": "  Total time (parallel): {t}"},
+    "mapping.log_batch_concurrency": {
+        "it": "Concorrenza batch: max {n} simulazioni in parallelo (stima core fisici, os.cpu_count()={logical}).",
+        "en": "Batch concurrency: max {n} parallel simulations (estimated physical cores, os.cpu_count()={logical}).",
+    },
+})
 
 # ── Candidati per auto-selezione campo ───────────────────────────────────────
 _PIPE_ID_CAND  = ('pipe_id', 'id', 'FID', 'fid', 'OBJECTID')
@@ -89,15 +660,15 @@ class LayerMappingPanel(QWidget):
         self._tab_repair = VerificaTab(iface=self.iface)
         self._tab_repair.layer_verified.connect(self._on_layer_verified)
         self._tab_repair.analysis_ok.connect(self._on_analysis_ok)
-        self.tabs.addTab(self._tab_repair, "0. Verifica Condotte")
+        self.tabs.addTab(self._tab_repair, tr("mapping.tab0_title"))
 
         self._tab_prepare = QWidget()
         self._build_prepare_tab(self._tab_prepare)
-        self.tabs.addTab(self._tab_prepare, "1. Prepara e Simula")
+        self.tabs.addTab(self._tab_prepare, tr("mapping.tab1_title"))
 
         self._tab_viz = QWidget()
         self._build_viz_tab(self._tab_viz)
-        self.tabs.addTab(self._tab_viz, "2. Visualizzazione Risultati")
+        self.tabs.addTab(self._tab_viz, tr("mapping.tab2_title"))
 
         # Routing interno: simulate_ready avvia la sim senza passare da main_dialog
         self.simulate_ready.connect(self._start_simulation)
@@ -148,46 +719,46 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 1 — Dati di input (sempre visibile)
         # ══════════════════════════════════════════════════════════════════════
-        grp_input = QGroupBox("Dati di Input")
+        grp_input = QGroupBox(tr("mapping.grp_input"))
         fl_input = QFormLayout(grp_input)
         fl_input.setLabelAlignment(Qt.AlignRight)
 
         self.cb_pipes = QComboBox()
         self.cb_pipes.currentIndexChanged.connect(self._on_pipes_layer_changed)
-        fl_input.addRow("Layer condotte:", self.cb_pipes)
+        fl_input.addRow(tr("mapping.row_pipes_layer"), self.cb_pipes)
 
         self.cb_nodes = QComboBox()
         self.cb_nodes.currentIndexChanged.connect(self._on_nodes_layer_changed)
-        fl_input.addRow("Layer nodi:", self.cb_nodes)
+        fl_input.addRow(tr("mapping.row_nodes_layer"), self.cb_nodes)
 
         # DEM — sempre visibile; usato solo se "Preserva nodi intermedi" è attivo
         self.cb_dem = QComboBox()
-        self.cb_dem.addItem("-- nessuno --", None)
-        self._row_dem_label = QLabel("DEM (raster):")
+        self.cb_dem.addItem(tr("mapping.none_item"), None)
+        self._row_dem_label = QLabel(tr("mapping.lbl_dem"))
         fl_input.addRow(self._row_dem_label, self.cb_dem)
 
         out_row = QHBoxLayout()
         self.txt_prepare_folder = QLineEdit()
-        self.txt_prepare_folder.setPlaceholderText("Cartella dove salvare i CSV")
+        self.txt_prepare_folder.setPlaceholderText(tr("mapping.placeholder_out_folder"))
         out_row.addWidget(self.txt_prepare_folder)
         btn_browse_out = QPushButton("...")
         btn_browse_out.setFixedWidth(32)
         btn_browse_out.clicked.connect(self._browse_prepare_folder)
         out_row.addWidget(btn_browse_out)
-        fl_input.addRow("Cartella output:", out_row)
+        fl_input.addRow(tr("mapping.row_out_folder"), out_row)
 
         self.spin_ora = QSpinBox()
         self.spin_ora.setRange(0, 23)
         self.spin_ora.setValue(0)
         self.spin_ora.setSuffix("h")
         self.spin_ora.valueChanged.connect(self._update_ora_preview)
-        fl_input.addRow("Ora del giorno:", self.spin_ora)
+        fl_input.addRow(tr("mapping.row_ora"), self.spin_ora)
         self.lbl_ora_preview = QLabel("")
         self.lbl_ora_preview.setTextFormat(Qt.RichText)
         fl_input.addRow("", self.lbl_ora_preview)
 
-        self.chk_sim_24 = QCheckBox("Simula 24 ore in parallelo (0-23)")
-        self.chk_sim_24.setToolTip("Avvia la simulazione contemporanea per tutte le 24 ore.")
+        self.chk_sim_24 = QCheckBox(tr("mapping.chk_sim24"))
+        self.chk_sim_24.setToolTip(tr("mapping.chk_sim24_tooltip"))
         fl_input.addRow("", self.chk_sim_24)
 
         outer.addWidget(grp_input)
@@ -195,33 +766,29 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 2 — Modalità collasso
         # ══════════════════════════════════════════════════════════════════════
-        self.chk_already_collapsed = QCheckBox(
-            "Rete già collassata  (salta il collasso, usa layer esistenti)")
+        self.chk_already_collapsed = QCheckBox(tr("mapping.chk_already_collapsed"))
         self.chk_already_collapsed.setChecked(False)
         self.chk_already_collapsed.toggled.connect(self._on_mode_changed)
         outer.addWidget(self.chk_already_collapsed)
 
         # — Modalità A: collassa —
-        self.grp_collapse_mode = QGroupBox("Opzioni Collasso")
+        self.grp_collapse_mode = QGroupBox(tr("mapping.grp_collapse_mode"))
         fl_a = QFormLayout(self.grp_collapse_mode)
         fl_a.setLabelAlignment(Qt.AlignRight)
 
         self.cb_diam_field = QComboBox()
         self.cb_diam_field.setToolTip(
-            "Campo del diametro nel layer condotte.\n"
-            "Auto-selezionato cercando (nell'ordine):\n"
-            f"  {', '.join(_DIAM_CAND)}\n"
-            "Se nessuno corrisponde, seleziona manualmente.")
+            tr("mapping.diam_field_tooltip", cands=', '.join(_DIAM_CAND)))
         self.cb_diam_unit = QComboBox()
-        self.cb_diam_unit.addItem("pollici (in)", "in")
-        self.cb_diam_unit.addItem("metri (m)", "m")
-        self.cb_diam_unit.addItem("centimetri (cm)", "cm")
+        self.cb_diam_unit.addItem(tr("mapping.unit_in"), "in")
+        self.cb_diam_unit.addItem(tr("mapping.unit_m"), "m")
+        self.cb_diam_unit.addItem(tr("mapping.unit_cm"), "cm")
         _diam_row = QHBoxLayout()
         _diam_row.addWidget(self.cb_diam_field)
         _diam_row.addSpacing(4)
-        _diam_row.addWidget(QLabel("Unità:"))
+        _diam_row.addWidget(QLabel(tr("mapping.lbl_unit")))
         _diam_row.addWidget(self.cb_diam_unit)
-        fl_a.addRow("Diametro:", _diam_row)
+        fl_a.addRow(tr("mapping.row_diameter"), _diam_row)
 
         ref_row = QHBoxLayout()
         ref_row.setContentsMargins(0, 0, 0, 0)
@@ -232,37 +799,37 @@ class LayerMappingPanel(QWidget):
         ref_row.addWidget(QLabel(" = "))
         self.txt_nodes_ref_val = QLineEdit()
         self.txt_nodes_ref_val.setEnabled(False)
-        self.txt_nodes_ref_val.setPlaceholderText("tutti")
+        self.txt_nodes_ref_val.setPlaceholderText(tr("mapping.ref_val_placeholder"))
         self.txt_nodes_ref_val.setFixedWidth(80)
         ref_row.addWidget(self.txt_nodes_ref_val)
         ref_row.addStretch()
-        fl_a.addRow("Campo reference:", ref_row)
+        fl_a.addRow(tr("mapping.row_ref_field"), ref_row)
 
         outer.addWidget(self.grp_collapse_mode)
 
         # — Modalità B: già collassata —
-        self.grp_collapsed_layers = QGroupBox("Layer Già Collassati")
+        self.grp_collapsed_layers = QGroupBox(tr("mapping.grp_collapsed_layers"))
         fl_b = QFormLayout(self.grp_collapsed_layers)
         fl_b.setLabelAlignment(Qt.AlignRight)
 
         self.cb_coll_pipes = QComboBox()
         self.cb_coll_pipes.currentIndexChanged.connect(self._on_coll_pipes_changed)
-        fl_b.addRow("Layer condotte:", self.cb_coll_pipes)
+        fl_b.addRow(tr("mapping.row_pipes_layer"), self.cb_coll_pipes)
 
         self.cb_coll_nodes = QComboBox()
         self.cb_coll_nodes.currentIndexChanged.connect(self._on_coll_nodes_changed)
-        fl_b.addRow("Layer nodi:", self.cb_coll_nodes)
+        fl_b.addRow(tr("mapping.row_nodes_layer"), self.cb_coll_nodes)
 
         outer.addWidget(self.grp_collapsed_layers)
         self.grp_collapsed_layers.setVisible(False)
 
         # Mappatura campi (Mod. B — nascosti di default)
-        self.grp_field_pipes = QGroupBox("Mappatura Campi Condotte")
+        self.grp_field_pipes = QGroupBox(tr("mapping.grp_field_pipes"))
         fl_bp = QFormLayout(self.grp_field_pipes)
         fl_bp.setLabelAlignment(Qt.AlignRight)
 
         self.cb_f_pipe_id = QComboBox()
-        fl_bp.addRow("ID pipe:", self.cb_f_pipe_id)
+        fl_bp.addRow(tr("mapping.row_pipe_id"), self.cb_f_pipe_id)
 
         row_ab = QHBoxLayout()
         self.cb_f_node_a = QComboBox()
@@ -270,64 +837,53 @@ class LayerMappingPanel(QWidget):
         row_ab.addWidget(QLabel("A:")); row_ab.addWidget(self.cb_f_node_a)
         row_ab.addSpacing(8)
         row_ab.addWidget(QLabel("B:")); row_ab.addWidget(self.cb_f_node_b)
-        fl_bp.addRow("Nodo A / B:", row_ab)
+        fl_bp.addRow(tr("mapping.row_node_ab"), row_ab)
 
         self.cb_f_length = QComboBox()
-        fl_bp.addRow("Lunghezza:", self.cb_f_length)
+        fl_bp.addRow(tr("mapping.row_length"), self.cb_f_length)
 
         row_diam = QHBoxLayout()
         self.cb_f_diam = QComboBox()
         self.cb_f_diam_unit = QComboBox()
-        self.cb_f_diam_unit.addItem("metri (m)", "m")
-        self.cb_f_diam_unit.addItem("pollici (in)", "in")
-        self.cb_f_diam_unit.addItem("centimetri (cm)", "cm")
+        self.cb_f_diam_unit.addItem(tr("mapping.unit_m"), "m")
+        self.cb_f_diam_unit.addItem(tr("mapping.unit_in"), "in")
+        self.cb_f_diam_unit.addItem(tr("mapping.unit_cm"), "cm")
         row_diam.addWidget(self.cb_f_diam)
         row_diam.addSpacing(4)
-        row_diam.addWidget(QLabel("Unità:"))
+        row_diam.addWidget(QLabel(tr("mapping.lbl_unit")))
         row_diam.addWidget(self.cb_f_diam_unit)
-        fl_bp.addRow("Diametro:", row_diam)
+        fl_bp.addRow(tr("mapping.row_diameter"), row_diam)
 
         outer.addWidget(self.grp_field_pipes)
         self.grp_field_pipes.setVisible(False)
 
         # ── Mappatura campi nodi ──────────────────────────────────────────────
-        self.grp_field_nodes = QGroupBox("Mappatura Campi Nodi")
+        self.grp_field_nodes = QGroupBox(tr("mapping.grp_field_nodes"))
         fl_bn = QFormLayout(self.grp_field_nodes)
         fl_bn.setLabelAlignment(Qt.AlignRight)
 
         self.cb_f_node_id = QComboBox()
-        fl_bn.addRow("ID nodo:", self.cb_f_node_id)
+        fl_bn.addRow(tr("mapping.row_node_id"), self.cb_f_node_id)
 
         self.cb_f_altitude = QComboBox()
-        fl_bn.addRow("Altitudine:", self.cb_f_altitude)
+        fl_bn.addRow(tr("mapping.row_altitude"), self.cb_f_altitude)
 
         row_ref = QHBoxLayout()
         self.cb_f_ref_flag = QComboBox()
         self.txt_ref_value = QLineEdit("1")
         self.txt_ref_value.setFixedWidth(70)
-        self.txt_ref_value.setToolTip(
-            "Valore del campo che identifica i nodi reference.\n"
-            "Esempi:\n"
-            "  '1'          se campo 'matched'\n"
-            "  'reference'  se campo 'Type'\n"
-            "  '1'          se campo 'is_ref'")
+        self.txt_ref_value.setToolTip(tr("mapping.ref_value_tooltip"))
         row_ref.addWidget(self.cb_f_ref_flag)
         row_ref.addWidget(QLabel(" = "))
         row_ref.addWidget(self.txt_ref_value)
-        fl_bn.addRow("Flag reference:", row_ref)
+        fl_bn.addRow(tr("mapping.row_ref_flag"), row_ref)
 
         self.cb_f_flow = QComboBox()
-        self.cb_f_flow.addItem("-- nessuno (usa placeholder) --", "")
-        self.cb_f_flow.setToolTip(
-            "Campo con i consumi orari di gas per ogni nodo junction.\n"
-            "Formato atteso: 24 valori numerici separati dal carattere\n"
-            "scelto in 'Separatore flussi' (es: 1.23;0.98;0.87;...)\n"
-            "Unita': Smc/h (metri cubi standard per ora).\n"
-            "Viene usato il valore all'ora impostata in 'Ora del giorno'.\n"
-            "Se non selezionato: usa il valore 'Flusso placeholder'.")
-        fl_bn.addRow("Flusso orario nodi:", self.cb_f_flow)
+        self.cb_f_flow.addItem(tr("mapping.none_placeholder_item"), "")
+        self.cb_f_flow.setToolTip(tr("mapping.cb_f_flow_tooltip"))
+        fl_bn.addRow(tr("mapping.row_flow_hourly"), self.cb_f_flow)
         self.cb_f_flow.currentIndexChanged.connect(self._update_ora_preview)
-        lbl_flow_hint_b = QLabel("<i style='color:gray'>24 val. Smc/h separati (es: 1.2;0.9;0.8;...)</i>")
+        lbl_flow_hint_b = QLabel(tr("mapping.flow_hint_b"))
         lbl_flow_hint_b.setTextFormat(Qt.RichText)
         fl_bn.addRow("", lbl_flow_hint_b)
 
@@ -337,45 +893,43 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 3 — Compressori (flag)
         # ══════════════════════════════════════════════════════════════════════
-        self.chk_enable_compressor = QCheckBox("⚙  Compressori")
+        self.chk_enable_compressor = QCheckBox(tr("mapping.chk_enable_compressor"))
         self.chk_enable_compressor.setChecked(False)
-        self.chk_enable_compressor.setToolTip("Attiva la gestione dei nodi compressore.")
+        self.chk_enable_compressor.setToolTip(tr("mapping.chk_enable_compressor_tooltip"))
         outer.addWidget(self.chk_enable_compressor)
 
-        self._grp_compressor = QGroupBox("Opzioni Compressore")
+        self._grp_compressor = QGroupBox(tr("mapping.grp_compressor"))
         self._grp_compressor.setVisible(False)
         comp_inner = QFormLayout(self._grp_compressor)
         comp_inner.setLabelAlignment(Qt.AlignRight)
 
         comp_row_a = QHBoxLayout()
         comp_row_a.setContentsMargins(0, 0, 0, 0)
-        
+
         self.cb_f_nodes_comp_field = QComboBox()
         self.cb_f_nodes_comp_field.setEnabled(False)
-        self.cb_f_nodes_comp_field.setToolTip("Campo che identifica i nodi compressore.")
+        self.cb_f_nodes_comp_field.setToolTip(tr("mapping.cb_f_nodes_comp_field_tooltip"))
         comp_row_a.addWidget(self.cb_f_nodes_comp_field)
-        
+
         comp_row_a.addWidget(QLabel(" = "))
-        
+
         self.txt_nodes_comp_val = QLineEdit()
         self.txt_nodes_comp_val.setEnabled(False)
-        self.txt_nodes_comp_val.setPlaceholderText("es. compressore")
+        self.txt_nodes_comp_val.setPlaceholderText(tr("mapping.txt_nodes_comp_val_placeholder"))
         self.txt_nodes_comp_val.setFixedWidth(120)
-        self.txt_nodes_comp_val.setToolTip("Valore del campo che identifica i nodi compressore.")
+        self.txt_nodes_comp_val.setToolTip(tr("mapping.txt_nodes_comp_val_tooltip"))
         comp_row_a.addWidget(self.txt_nodes_comp_val)
-        
+
         comp_row_a.addStretch()
-        comp_inner.addRow("Campo e Valore:", comp_row_a)
+        comp_inner.addRow(tr("mapping.row_field_value"), comp_row_a)
 
         comp_attr_row_a = QHBoxLayout()
         comp_attr_row_a.setContentsMargins(0, 0, 0, 0)
         self.cb_f_nodes_comp_pout = QComboBox()
         self.cb_f_nodes_comp_pout.setEnabled(False)
         self.cb_f_nodes_comp_pout.setEditable(True)
-        self.cb_f_nodes_comp_pout.setToolTip(
-            "Campo con pressione di uscita [bar] oppure VALORE FISSO (es. 70.0).\n"
-            "Se valorizzato, sovrascrive 'ratio' calcolando ratio = p_out / p_in.")
-        comp_attr_row_a.addWidget(QLabel("Pressione OUT [bar]:")); comp_attr_row_a.addWidget(self.cb_f_nodes_comp_pout)
+        self.cb_f_nodes_comp_pout.setToolTip(tr("mapping.comp_pout_tooltip"))
+        comp_attr_row_a.addWidget(QLabel(tr("mapping.lbl_pressure_out"))); comp_attr_row_a.addWidget(self.cb_f_nodes_comp_pout)
         
         # Il controllo di pressione e' ora l'UNICA modalita' esposta.
         #
@@ -391,11 +945,11 @@ class LayerMappingPanel(QWidget):
         #
         # Si mantiene l'attributo per compatibilita' con le firme esistenti
         # (comp_use_pcm), ma non e' piu' una scelta dell'utente.
-        self.chk_use_pcm = QCheckBox("Usa PCM (Pressure Control Mode)")
+        self.chk_use_pcm = QCheckBox(tr("mapping.chk_use_pcm"))
         self.chk_use_pcm.setChecked(True)
         self.chk_use_pcm.setVisible(False)
-        
-        comp_inner.addRow("Parametri:", comp_attr_row_a)
+
+        comp_inner.addRow(tr("mapping.row_parameters"), comp_attr_row_a)
 
         outer.addWidget(self._grp_compressor)
         self.chk_enable_compressor.toggled.connect(
@@ -404,35 +958,29 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 4 — Opzioni avanzate (flag)
         # ══════════════════════════════════════════════════════════════════════
-        self._chk_advanced = QCheckBox("⚙  Opzioni avanzate")
+        self._chk_advanced = QCheckBox(tr("mapping.chk_advanced"))
         self._chk_advanced.setChecked(False)
         outer.addWidget(self._chk_advanced)
 
-        self._grp_advanced = QGroupBox("Opzioni Avanzate")
+        self._grp_advanced = QGroupBox(tr("mapping.grp_advanced"))
         self._grp_advanced.setVisible(False)
         adv_form = QFormLayout(self._grp_advanced)
         adv_form.setLabelAlignment(Qt.AlignRight)
 
         # Preserva nodi intermedi — il DEM è in "Dati di Input"
-        self.chk_no_collapse = QCheckBox("Preserva nodi intermedi (quota reale da DEM)")
+        self.chk_no_collapse = QCheckBox(tr("mapping.chk_no_collapse"))
         self.chk_no_collapse.setChecked(False)
-        self.chk_no_collapse.setToolTip(
-            "Se attivato, NON esegue il collasso topologico.\n"
-            "Tutti i nodi intermedi vengono mantenuti, usando la quota\n"
-            "reale dal raster DEM per ogni nodo della rete.\n"
-            "Genera reti più grandi ma con differenze di quota accurate.")
+        self.chk_no_collapse.setToolTip(tr("mapping.chk_no_collapse_tooltip"))
         adv_form.addRow("", self.chk_no_collapse)
 
         adv_form.addRow(QLabel())  # separatore visivo
 
         self.cb_f_nodes_flow = QComboBox()
-        self.cb_f_nodes_flow.addItem("-- nessuno (usa placeholder) --", "")
+        self.cb_f_nodes_flow.addItem(tr("mapping.none_placeholder_item"), "")
         self.cb_f_nodes_flow.setEnabled(False)
-        self.cb_f_nodes_flow.setToolTip(
-            "Campo con i consumi orari di gas per ogni nodo junction (Mod. A).\n"
-            "Formato: 24 valori Smc/h separati da ';'.")
-        adv_form.addRow("Flusso orario nodi:", self.cb_f_nodes_flow)
-        _lbl_adv_hint = QLabel("<i style='color:gray'>24 val. Smc/h sep. da ';'</i>")
+        self.cb_f_nodes_flow.setToolTip(tr("mapping.cb_f_nodes_flow_tooltip"))
+        adv_form.addRow(tr("mapping.row_flow_hourly"), self.cb_f_nodes_flow)
+        _lbl_adv_hint = QLabel(tr("mapping.adv_flow_hint"))
         _lbl_adv_hint.setTextFormat(Qt.RichText)
         adv_form.addRow("", _lbl_adv_hint)
 
@@ -441,30 +989,30 @@ class LayerMappingPanel(QWidget):
         self.spin_radius.setDecimals(1)
         self.spin_radius.setValue(50.0)
         self.spin_radius.setSuffix(" m")
-        adv_form.addRow("Raggio aggancio:", self.spin_radius)
+        adv_form.addRow(tr("mapping.row_radius"), self.spin_radius)
 
         self.cb_separator = QComboBox()
-        self.cb_separator.addItem(";  (punto e virgola)", ";")
-        self.cb_separator.addItem(",  (virgola)", ",")
-        self.cb_separator.addItem("|  (pipe)", "|")
-        self.cb_separator.addItem(":  (due punti)", ":")
-        self.cb_separator.addItem("spazio", " ")
-        self.cb_separator.addItem("\\t  (tabulazione)", "\t")
-        adv_form.addRow("Separatore flussi:", self.cb_separator)
+        self.cb_separator.addItem(tr("mapping.sep_semicolon"), ";")
+        self.cb_separator.addItem(tr("mapping.sep_comma"), ",")
+        self.cb_separator.addItem(tr("mapping.sep_pipe"), "|")
+        self.cb_separator.addItem(tr("mapping.sep_colon"), ":")
+        self.cb_separator.addItem(tr("mapping.sep_space"), " ")
+        self.cb_separator.addItem(tr("mapping.sep_tab"), "\t")
+        adv_form.addRow(tr("mapping.row_separator"), self.cb_separator)
 
         self.spin_pressure = QDoubleSpinBox()
         self.spin_pressure.setRange(1.0, 300.0)
         self.spin_pressure.setDecimals(1)
         self.spin_pressure.setValue(75.0)
         self.spin_pressure.setSuffix(" bar")
-        adv_form.addRow("Pressione reference:", self.spin_pressure)
+        adv_form.addRow(tr("mapping.row_pressure_ref"), self.spin_pressure)
 
         self.spin_temp = QDoubleSpinBox()
         self.spin_temp.setRange(250.0, 400.0)
         self.spin_temp.setDecimals(2)
         self.spin_temp.setValue(288.15)
         self.spin_temp.setSuffix(" K")
-        adv_form.addRow("Temperatura:", self.spin_temp)
+        adv_form.addRow(tr("mapping.row_temperature"), self.spin_temp)
 
         _jflow_row = QHBoxLayout()
         self.spin_jflow = QDoubleSpinBox()
@@ -477,7 +1025,7 @@ class LayerMappingPanel(QWidget):
         _btn_reset_jflow.setFixedWidth(26)
         _btn_reset_jflow.clicked.connect(lambda: self.spin_jflow.setValue(0.0001))
         _jflow_row.addWidget(_btn_reset_jflow)
-        adv_form.addRow("Flusso placeholder:", _jflow_row)
+        adv_form.addRow(tr("mapping.row_placeholder_flow"), _jflow_row)
 
         _rough_row = QHBoxLayout()
         self.spin_roughness = QDoubleSpinBox()
@@ -490,7 +1038,7 @@ class LayerMappingPanel(QWidget):
         _btn_reset_rough.setFixedWidth(26)
         _btn_reset_rough.clicked.connect(lambda: self.spin_roughness.setValue(0.000012))
         _rough_row.addWidget(_btn_reset_rough)
-        adv_form.addRow("Rugosit\u00e0 condotte:", _rough_row)
+        adv_form.addRow(tr("mapping.row_roughness"), _rough_row)
 
         _phflow_row = QHBoxLayout()
         self.spin_placeholder_flow = QDoubleSpinBox()
@@ -503,18 +1051,18 @@ class LayerMappingPanel(QWidget):
         _btn_reset_phflow.setFixedWidth(26)
         _btn_reset_phflow.clicked.connect(lambda: self.spin_placeholder_flow.setValue(1e-6))
         _phflow_row.addWidget(_btn_reset_phflow)
-        adv_form.addRow("Flusso minimo export:", _phflow_row)
+        adv_form.addRow(tr("mapping.row_min_export_flow"), _phflow_row)
 
         self.spin_result_decimals = QSpinBox()
         self.spin_result_decimals.setRange(0, 10)
         self.spin_result_decimals.setValue(4)
-        adv_form.addRow("Decimali layer risultato:", self.spin_result_decimals)
+        adv_form.addRow(tr("mapping.row_result_decimals"), self.spin_result_decimals)
 
-        self.chk_show_collapsed = QCheckBox("Mostra layer collassato nella legenda")
+        self.chk_show_collapsed = QCheckBox(tr("mapping.chk_show_collapsed"))
         self.chk_show_collapsed.setChecked(True)
         adv_form.addRow("", self.chk_show_collapsed)
 
-        self.chk_show_orig_pipes = QCheckBox("Crea layer condotte originali colorato")
+        self.chk_show_orig_pipes = QCheckBox(tr("mapping.chk_show_orig_pipes"))
         self.chk_show_orig_pipes.setChecked(False)
         adv_form.addRow("", self.chk_show_orig_pipes)
 
@@ -525,11 +1073,11 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 5 — Parametri solutore (flag)
         # ══════════════════════════════════════════════════════════════════════
-        self._chk_solver = QCheckBox("⚙  Parametri solutore")
+        self._chk_solver = QCheckBox(tr("mapping.chk_solver"))
         self._chk_solver.setChecked(False)
         outer.addWidget(self._chk_solver)
 
-        self._grp_solver = QGroupBox("Parametri Solutore")
+        self._grp_solver = QGroupBox(tr("mapping.grp_solver"))
         self._grp_solver.setVisible(False)
         sform = QFormLayout(self._grp_solver)
         sform.setLabelAlignment(Qt.AlignRight)
@@ -537,13 +1085,13 @@ class LayerMappingPanel(QWidget):
         self.spin_maxiter = QSpinBox()
         self.spin_maxiter.setRange(10, 2000)
         self.spin_maxiter.setValue(50)
-        sform.addRow("Max iterazioni:", self.spin_maxiter)
+        sform.addRow(tr("mapping.row_maxiter"), self.spin_maxiter)
 
         self.spin_tol = QDoubleSpinBox()
         self.spin_tol.setRange(0.0001, 10.0)
         self.spin_tol.setDecimals(4)
         self.spin_tol.setValue(0.001)
-        self.spin_tol.setToolTip("Es. 1.0 Sm³/s equivale a ben 3600 Sm³/h di errore nel bilancio del nodo.")
+        self.spin_tol.setToolTip(tr("mapping.spin_tol_tooltip"))
         # Riquadro accanto: mostra la tolleranza convertita in Sm³/h (× 3600),
         # aggiornato in tempo reale, così non serve convertirla a mano.
         _tol_row = QHBoxLayout()
@@ -554,8 +1102,7 @@ class LayerMappingPanel(QWidget):
         self.txt_tol_smc_h = QLineEdit()
         self.txt_tol_smc_h.setReadOnly(True)
         self.txt_tol_smc_h.setFixedWidth(90)
-        self.txt_tol_smc_h.setToolTip(
-            "Tolleranza equivalente in Sm³/h (= valore in Sm³/s × 3600). Solo lettura.")
+        self.txt_tol_smc_h.setToolTip(tr("mapping.txt_tol_smc_h_tooltip"))
         _tol_row.addWidget(self.txt_tol_smc_h)
         _tol_row.addWidget(QLabel("Sm³/h"))
         _tol_row.addStretch()
@@ -564,22 +1111,17 @@ class LayerMappingPanel(QWidget):
             self.txt_tol_smc_h.setText(f"{self.spin_tol.value() * 3600.0:.1f}")
         self.spin_tol.valueChanged.connect(_update_tol_smc_h)
         _update_tol_smc_h()
-        sform.addRow("Tolleranza [Sm³/s]:", _tol_row)
+        sform.addRow(tr("mapping.row_tol"), _tol_row)
 
         self.spin_urf = QDoubleSpinBox()
         self.spin_urf.setRange(0.1, 20.0)
         self.spin_urf.setDecimals(1)
         self.spin_urf.setValue(2.0)
-        sform.addRow("URF:", self.spin_urf)
+        sform.addRow(tr("mapping.row_urf"), self.spin_urf)
 
-        self.chk_autocal = QCheckBox("Auto-calibra tol e URF")
+        self.chk_autocal = QCheckBox(tr("mapping.chk_autocal"))
         self.chk_autocal.setChecked(False)
-        self.chk_autocal.setToolTip(
-            "Imposta automaticamente tol e URF in base alla dimensione della rete:\n"
-            "  < 100 nodi  \u2192 tol=0.1,  urf=1.5\n"
-            "  < 500 nodi  \u2192 tol=1.0,  urf=2.0\n"
-            "  < 2000 nodi \u2192 tol=5.0,  urf=2.5\n"
-            "  \u2265 2000 nodi \u2192 tol=10.0, urf=3.0")
+        self.chk_autocal.setToolTip(tr("mapping.chk_autocal_tooltip"))
 
         # L'affinamento e' INDIPENDENTE dall'auto-calibrazione: la prima
         # sceglie il punto di PARTENZA (tol e urf iniziali in base alla
@@ -588,12 +1130,9 @@ class LayerMappingPanel(QWidget):
         # qualunque valore. Legarli costringeva ad accettare la tol imposta
         # dall'auto-calibrazione per poter affinare, e impediva di partire da
         # una tolleranza scelta a mano.
-        self.chk_refine = QCheckBox("Affina precisione")
+        self.chk_refine = QCheckBox(tr("mapping.chk_refine"))
         self.chk_refine.setChecked(False)
-        self.chk_refine.setToolTip(
-            "Dopo la prima convergenza, ritenta con tol\u00f710 fino a 1e-4.\n"
-            "Funziona sia con 'Auto-calibra' attivo sia con tol impostata a mano:\n"
-            "il valore da riportare e' sempre la tolleranza FINALE.")
+        self.chk_refine.setToolTip(tr("mapping.chk_refine_tooltip"))
 
         _autocal_row = QHBoxLayout()
         _autocal_row.setSpacing(8)
@@ -602,11 +1141,9 @@ class LayerMappingPanel(QWidget):
         _autocal_row.addStretch()
         sform.addRow("", _autocal_row)
 
-        self.chk_multiprocess = QCheckBox("Forza Multiprocesso (Subprocess)")
+        self.chk_multiprocess = QCheckBox(tr("mapping.chk_multiprocess"))
         self.chk_multiprocess.setChecked(True)
-        self.chk_multiprocess.setToolTip(
-            "Crea processi Python indipendenti per bypassare il GIL di Python\n"
-            "e usare il 100% della CPU nelle simulazioni parallele (consigliato).")
+        self.chk_multiprocess.setToolTip(tr("mapping.chk_multiprocess_tooltip"))
         sform.addRow("", self.chk_multiprocess)
 
         def _on_autocal_toggled(checked):
@@ -624,7 +1161,7 @@ class LayerMappingPanel(QWidget):
         # ══════════════════════════════════════════════════════════════════════
         # BLOCCO 6 — Composizione gas (sempre visibile)
         # ══════════════════════════════════════════════════════════════════════
-        grp_adv = QGroupBox("Composizione Gas")
+        grp_adv = QGroupBox(tr("mapping.grp_gas"))
         aform = QFormLayout(grp_adv)
         aform.setLabelAlignment(Qt.AlignRight)
 
@@ -643,49 +1180,44 @@ class LayerMappingPanel(QWidget):
             'carbon dioxide': 0.00602, 'helium': 0.00078,
         }
         _GAS_PRESETS = [
-            ("SNAM — Mazara del Vallo (gas algerino)",
+            (tr("mapping.gas_mazara"),
              "SNAM_MAZARA_GAS", _MAZARA_DICT),
-            ("SNAM — Gela (gas libico)",
+            (tr("mapping.gas_gela"),
              "SNAM_GELA_GAS", _GELA_DICT),
-            ("Metano puro (100% CH4)",
+            (tr("mapping.gas_pure_methane"),
              "{'methane': 1.0}", {'methane': 1.0}),
-            ("Gas naturale tipico (94% CH4)",
+            (tr("mapping.gas_typical_natural"),
              "{'methane': 0.94, 'ethane': 0.04, 'propane': 0.01, 'nitrogen': 0.01}",
              {'methane': 0.94, 'ethane': 0.04, 'propane': 0.01, 'nitrogen': 0.01}),
-            ("Idrogeno puro (H2)",
+            (tr("mapping.gas_pure_hydrogen"),
              "{'hydrogen': 1.0}", {'hydrogen': 1.0}),
-            ("Personalizzato...", None, None),
+            (tr("mapping.gas_custom"), None, None),
         ]
         for label, csv_str, blend_dict in _GAS_PRESETS:
             self.cb_gas_preset.addItem(label, (csv_str, blend_dict))
-        aform.addRow("Gas base:", self.cb_gas_preset)
+        aform.addRow(tr("mapping.row_gas_base"), self.cb_gas_preset)
 
         # Aggiunta percentuale molare di H2
         _h2_row = QHBoxLayout()
         self.spin_h2_pct = QDoubleSpinBox()
         self.spin_h2_pct.setRange(0.0, 99.0)
-        self.spin_h2_pct.setDecimals(1)
+        self.spin_h2_pct.setDecimals(2)
+        self.spin_h2_pct.setSingleStep(0.01)
         self.spin_h2_pct.setValue(0.0)
         self.spin_h2_pct.setSuffix(" %")
-        self.spin_h2_pct.setToolTip(
-            "Percentuale molare di H\u2082 da aggiungere al gas base.\n"
-            "La composizione base viene riscalata proporzionalmente.\n"
-            "Esempio: 20% H\u2082 + SNAM Mazara \u2192 80% della composizione Mazara + 20% H\u2082.")
+        self.spin_h2_pct.setToolTip(tr("mapping.spin_h2_pct_tooltip"))
         _h2_row.addWidget(self.spin_h2_pct)
         _btn_reset_h2 = QPushButton("\u21ba")
         _btn_reset_h2.setFixedWidth(26)
-        _btn_reset_h2.setToolTip("Azzera percentuale H\u2082")
+        _btn_reset_h2.setToolTip(tr("mapping.btn_reset_h2_tooltip"))
         _btn_reset_h2.clicked.connect(lambda: self.spin_h2_pct.setValue(0.0))
         _h2_row.addWidget(_btn_reset_h2)
-        aform.addRow("Aggiunta H\u2082:", _h2_row)
+        aform.addRow(tr("mapping.row_h2_addition"), _h2_row)
 
         self.txt_gas_comp = QLineEdit("SNAM_MAZARA_GAS")
-        self.txt_gas_comp.setPlaceholderText("nome preset  oppure  {'methane': 0.9, ...}")
-        self.txt_gas_comp.setToolTip(
-            "Composizione che viene scritta nel CSV di input.\n"
-            "Viene aggiornata automaticamente quando si cambia il preset o la % H\u2082.\n"
-            "Modificabile manualmente per composizioni personalizzate.")
-        aform.addRow("Composizione export:", self.txt_gas_comp)
+        self.txt_gas_comp.setPlaceholderText(tr("mapping.txt_gas_comp_placeholder"))
+        self.txt_gas_comp.setToolTip(tr("mapping.txt_gas_comp_tooltip"))
+        aform.addRow(tr("mapping.row_gas_export"), self.txt_gas_comp)
 
         def _build_blended_str():
             """Aggiorna txt_gas_comp combinando il preset base con la % H2."""
@@ -735,55 +1267,61 @@ class LayerMappingPanel(QWidget):
         _build_blended_str()
         outer.addWidget(grp_adv)
         outer.addStretch()
-        btn_reload = QPushButton("\u21ba  Ricarica layer")
+        btn_reload = QPushButton(tr("mapping.btn_reload"))
         btn_reload.clicked.connect(self.reload_layers)
         right_layout.addWidget(btn_reload)
 
-        self.btn_collapse = QPushButton("> Genera CSV")
+        self.btn_collapse = QPushButton(tr("mapping.btn_collapse"))
         self.btn_collapse.setStyleSheet(
             "QPushButton { background-color: #2e6da4; color: white; "
             "font-weight: bold; padding: 6px; border-radius: 4px; }"
             "QPushButton:disabled { background-color: #666; color: #aaa; }")
         self.btn_collapse.clicked.connect(self._run_collapse)
-        self.btn_collapse.setToolTip(
-            "Esporta i CSV nella cartella di output selezionata.\n"
-            "Non avvia la simulazione.")
+        self.btn_collapse.setToolTip(tr("mapping.btn_collapse_tooltip"))
         right_layout.addWidget(self.btn_collapse)
 
-        self.chk_only_export = QCheckBox("Solo export CSV (non caricare in mappa)")
+        self.chk_only_export = QCheckBox(tr("mapping.chk_only_export"))
         self.chk_only_export.setChecked(False)
-        self.chk_only_export.setToolTip("Velocizza simulazioni multiple saltando rendering e layer su QGIS.")
+        self.chk_only_export.setToolTip(tr("mapping.chk_only_export_tooltip"))
         right_layout.addWidget(self.chk_only_export)
 
         # Avvia + Ferma affiancati.
         _sim_btn_row = QHBoxLayout()
         _sim_btn_row.setSpacing(6)
 
-        self.btn_collapse_sim = QPushButton("\u25b6  Avvia Simulazione")
+        self.btn_collapse_sim = QPushButton(tr("mapping.btn_start_sim"))
         self.btn_collapse_sim.setStyleSheet(
             "QPushButton { background-color: #1e7a1e; color: white; "
             "font-weight: bold; padding: 6px; border-radius: 4px; }"
             "QPushButton:disabled { background-color: #666; color: #aaa; }")
         self.btn_collapse_sim.clicked.connect(self._run_and_simulate)
-        self.btn_collapse_sim.setToolTip(
-            "Genera i CSV ed esegue la simulazione GasNetSim.\n"
-            "Il log compare qui a destra.")
+        self.btn_collapse_sim.setToolTip(tr("mapping.btn_start_sim_tooltip"))
         _sim_btn_row.addWidget(self.btn_collapse_sim, stretch=3)
 
-        self.btn_stop_sim = QPushButton("\u23f9  Ferma")
+        self.btn_stop_sim = QPushButton(tr("mapping.btn_stop_sim"))
         self.btn_stop_sim.setStyleSheet(
             "QPushButton { background-color: #a11; color: white; "
             "font-weight: bold; padding: 6px; border-radius: 4px; }"
             "QPushButton:disabled { background-color: #666; color: #aaa; }")
         self.btn_stop_sim.setEnabled(False)   # attivo solo mentre gira
         self.btn_stop_sim.clicked.connect(self._stop_simulation)
-        self.btn_stop_sim.setToolTip(
-            "Interrompe la simulazione in corso senza chiudere QGIS.")
+        self.btn_stop_sim.setToolTip(tr("mapping.btn_stop_sim_tooltip"))
         _sim_btn_row.addWidget(self.btn_stop_sim, stretch=1)
 
         right_layout.addLayout(_sim_btn_row)
 
-        lbl_log = QLabel("Log:")
+        # Campagna multi-giorno: esegue in sequenza il batch 24h su TUTTI i
+        # file-giorno di una cartella (es. i 19 GeoJSON dello Scenario 1).
+        self.btn_campaign = QPushButton(tr("mapping.btn_campaign"))
+        self.btn_campaign.setStyleSheet(
+            "QPushButton { background-color: #6a1b9a; color: white; "
+            "font-weight: bold; padding: 6px; border-radius: 4px; }"
+            "QPushButton:disabled { background-color: #666; color: #aaa; }")
+        self.btn_campaign.clicked.connect(self._run_campaign)
+        self.btn_campaign.setToolTip(tr("mapping.btn_campaign_tooltip"))
+        right_layout.addWidget(self.btn_campaign)
+
+        lbl_log = QLabel(tr("mapping.lbl_log"))
         lbl_log.setStyleSheet("font-weight: bold; margin-top: 8px;")
         right_layout.addWidget(lbl_log)
 
@@ -802,7 +1340,7 @@ class LayerMappingPanel(QWidget):
     def _show_log_context_menu(self, pos):
         menu = self.txt_log_run.createStandardContextMenu()
         menu.addSeparator()
-        act_clear = menu.addAction("\U0001f5d1  Svuota log")
+        act_clear = menu.addAction(tr("mapping.act_clear_log"))
         act_clear.triggered.connect(self.txt_log_run.clear)
         menu.exec_(self.txt_log_run.mapToGlobal(pos))
 
@@ -847,7 +1385,7 @@ class LayerMappingPanel(QWidget):
         outer_layout.addWidget(scroll)
 
         # -- Selezione layer risultati (PRIMA SEZIONE, subito visibile) --------
-        grp_recolor = QGroupBox("Visualizza risultati su layer")
+        grp_recolor = QGroupBox(tr("mapping.grp_recolor"))
         grp_recolor.setStyleSheet(
             "QGroupBox { font-weight: bold; border: 2px solid #0078d7; "
             "border-radius: 4px; margin-top: 6px; padding-top: 4px; }"
@@ -855,49 +1393,39 @@ class LayerMappingPanel(QWidget):
         fl_rc = QFormLayout(grp_recolor)
         fl_rc.setLabelAlignment(Qt.AlignRight)
 
-        lbl_rc = QLabel(
-            "<i style='color:gray;font-size:10px;'>"
-            "Dopo ogni simulazione i campi vengono compilati automaticamente.<br>"
-            "Puoi selezionare manualmente qualsiasi layer vettoriale del progetto<br>"
-            "(risultati di simulazioni precedenti inclusi).</i>")
+        lbl_rc = QLabel(tr("mapping.lbl_rc_hint"))
         lbl_rc.setTextFormat(Qt.RichText)
         fl_rc.addRow("", lbl_rc)
 
         self.cb_viz_nodes_lyr = QComboBox()
-        self.cb_viz_nodes_lyr.setToolTip(
-            "Layer nodi su cui applicare la colorimetria.\n"
-            "I layer R-N-* (risultati) appaiono in cima alla lista.")
-        fl_rc.addRow("Layer nodi:", self.cb_viz_nodes_lyr)
+        self.cb_viz_nodes_lyr.setToolTip(tr("mapping.cb_viz_nodes_lyr_tooltip"))
+        fl_rc.addRow(tr("mapping.row_nodes_layer"), self.cb_viz_nodes_lyr)
 
         self.cb_viz_nodes_field = QComboBox()
-        fl_rc.addRow("Colora nodi per:", self.cb_viz_nodes_field)
+        fl_rc.addRow(tr("mapping.row_color_nodes"), self.cb_viz_nodes_field)
 
         self.cb_viz_nodes_size = QComboBox()
-        self.cb_viz_nodes_size.setToolTip(
-            "Dimensiona i cerchi nodi proporzionalmente al campo scelto.\n"
-            "Seleziona '-- nessuno --' per usare dimensione fissa.")
-        fl_rc.addRow("Dimensiona nodi per:", self.cb_viz_nodes_size)
+        self.cb_viz_nodes_size.setToolTip(tr("mapping.cb_viz_nodes_size_tooltip"))
+        fl_rc.addRow(tr("mapping.row_size_nodes"), self.cb_viz_nodes_size)
 
         self.cb_viz_pipes_lyr = QComboBox()
-        self.cb_viz_pipes_lyr.setToolTip(
-            "Layer condotte su cui applicare la colorimetria.\n"
-            "I layer R-P-* (risultati) appaiono in cima alla lista.")
-        fl_rc.addRow("Layer condotte:", self.cb_viz_pipes_lyr)
+        self.cb_viz_pipes_lyr.setToolTip(tr("mapping.cb_viz_pipes_lyr_tooltip"))
+        fl_rc.addRow(tr("mapping.row_pipes_layer"), self.cb_viz_pipes_lyr)
 
         self.cb_viz_pipes_field = QComboBox()
-        fl_rc.addRow("Colora condotte per:", self.cb_viz_pipes_field)
+        fl_rc.addRow(tr("mapping.row_color_pipes"), self.cb_viz_pipes_field)
 
-        self.chk_viz_arrows = QCheckBox("Frecce direzione flusso")
+        self.chk_viz_arrows = QCheckBox(tr("mapping.chk_viz_arrows"))
         self.chk_viz_arrows.setChecked(False)
         fl_rc.addRow("", self.chk_viz_arrows)
 
         rc_btn_row = QHBoxLayout()
         btn_viz_refresh = QPushButton("\u21ba")
         btn_viz_refresh.setFixedWidth(32)
-        btn_viz_refresh.setToolTip("Aggiorna lista layer disponibili")
+        btn_viz_refresh.setToolTip(tr("mapping.btn_viz_refresh_tooltip"))
         btn_viz_refresh.clicked.connect(self._refresh_viz_combos)
         rc_btn_row.addWidget(btn_viz_refresh)
-        self.btn_viz_apply = QPushButton("\u25b6  Applica colorimetria")
+        self.btn_viz_apply = QPushButton(tr("mapping.btn_viz_apply"))
         self.btn_viz_apply.setStyleSheet(
             "QPushButton { background-color: #0078d7; color: white; "
             "font-weight: bold; padding: 5px; border-radius: 3px; }"
@@ -914,67 +1442,62 @@ class LayerMappingPanel(QWidget):
             lambda _: self._on_viz_pipes_lyr_changed())
 
         # -- Impostazioni per la prossima simulazione -----------------------
-        grp_sim_opts = QGroupBox("Impostazioni per la prossima simulazione")
+        grp_sim_opts = QGroupBox(tr("mapping.grp_sim_opts"))
         sim_layout = QVBoxLayout(grp_sim_opts)
         sim_layout.setSpacing(4)
 
-        lbl_hint = QLabel(
-            "Configura i campi e la colorimetria che verranno usati\n"
-            "quando si avvia una nuova simulazione.")
+        lbl_hint = QLabel(tr("mapping.lbl_sim_opts_hint"))
         lbl_hint.setStyleSheet("color: #aaa; font-size: 10px;")
         sim_layout.addWidget(lbl_hint)
 
         # -- Nodi -------------------------------------------------------------
-        grp_nodes = QGroupBox("Nodi")
+        grp_nodes = QGroupBox(tr("mapping.grp_nodes"))
         rlayout_n = QVBoxLayout(grp_nodes)
         rlayout_n.setSpacing(4)
         rform_n = QFormLayout()
         rform_n.setLabelAlignment(Qt.AlignRight)
         self.cb_res_nodes_color = QComboBox()
-        self.cb_res_nodes_color.addItem("Pressione (bar)",        "pressure_bar")
-        self.cb_res_nodes_color.addItem("Consumo (sm3/s)",        "volumetric_flow_sm3s")
-        self.cb_res_nodes_color.addItem("Consumo energetico (MW)","energy_flow_mw")
-        self.cb_res_nodes_color.addItem("Temperatura (K)",        "temperature_k")
-        self.cb_res_nodes_color.addItem("Spec. gravity",          "sp_gravity")
-        self.cb_res_nodes_color.addItem("Z-factor",               "z_factor")
-        self.cb_res_nodes_color.addItem("HHV (MJ/sm3)",           "hhv_mj_sm3")
-        self.cb_res_nodes_color.addItem("Wobbe (MJ/sm3)",         "wobbe_mj_sm3")
-        self.cb_res_nodes_color.addItem("Densità (kg/m3)",   "density_kg_m3")
-        self.cb_res_nodes_color.addItem("Dens. std (kg/sm3)",     "std_density_kg_sm3")
-        self.cb_res_nodes_color.addItem("Massa molare (g/mol)",   "molar_mass")
-        self.cb_res_nodes_color.addItem("H₂ (%)",                 "h2_pct")
-        self.cb_res_nodes_color.addItem("Throughput (Smc/h)",     "throughput_sm3h")
-        rform_n.addRow("Colora per:", self.cb_res_nodes_color)
+        self.cb_res_nodes_color.addItem(tr("mapping.f_pressure_bar"),        "pressure_bar")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_vol_flow"),        "volumetric_flow_sm3s")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_energy_flow"),"energy_flow_mw")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_temp_k"),        "temperature_k")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_sp_gravity"),          "sp_gravity")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_z_factor"),               "z_factor")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_hhv"),           "hhv_mj_sm3")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_wobbe"),         "wobbe_mj_sm3")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_density"),   "density_kg_m3")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_std_density"),     "std_density_kg_sm3")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_molar_mass"),   "molar_mass")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_h2_pct"),                 "h2_pct")
+        self.cb_res_nodes_color.addItem(tr("mapping.f_throughput"),     "throughput_sm3h")
+        rform_n.addRow(tr("mapping.row_color_by"), self.cb_res_nodes_color)
 
         self.cb_res_nodes_size = QComboBox()
-        self.cb_res_nodes_size.addItem("-- nessuno --",             None)
-        self.cb_res_nodes_size.addItem("Consumo (sm3/s)",          "volumetric_flow_sm3s")
-        self.cb_res_nodes_size.addItem("Consumo energetico (MW)",  "energy_flow_mw")
-        self.cb_res_nodes_size.addItem("Pressione (bar)",          "pressure_bar")
-        self.cb_res_nodes_size.addItem("Temperatura (K)",          "temperature_k")
-        self.cb_res_nodes_size.setToolTip(
-            "Se selezionato, dimensiona i cerchi dei nodi\n"
-            "proporzionalmente al valore assoluto del campo scelto.\n"
-            "Utile per visualizzare i consumi come bolle.")
-        rform_n.addRow("Dimensiona per:", self.cb_res_nodes_size)
+        self.cb_res_nodes_size.addItem(tr("mapping.none_item"),             None)
+        self.cb_res_nodes_size.addItem(tr("mapping.f_vol_flow"),          "volumetric_flow_sm3s")
+        self.cb_res_nodes_size.addItem(tr("mapping.f_energy_flow"),  "energy_flow_mw")
+        self.cb_res_nodes_size.addItem(tr("mapping.f_pressure_bar"),          "pressure_bar")
+        self.cb_res_nodes_size.addItem(tr("mapping.f_temp_k"),          "temperature_k")
+        self.cb_res_nodes_size.setToolTip(tr("mapping.cb_res_nodes_size_tooltip"))
+        rform_n.addRow(tr("mapping.row_size_by"), self.cb_res_nodes_size)
         rlayout_n.addLayout(rform_n)
         self._res_node_checks = []
         _node_fields = [
-            ("pressure_bar",          "Pressione"),
-            ("volumetric_flow_sm3s",  "Consumo sm3/s"),
-            ("energy_flow_mw",        "Consumo MW"),
-            ("temperature_k",         "Temp."),
-            ("sp_gravity",            "Sp.gravity"),
-            ("z_factor",              "Z-factor"),
-            ("hhv_mj_sm3",            "HHV"),
-            ("wobbe_mj_sm3",          "Wobbe"),
-            ("density_kg_m3",         "Densit\u00e0"),
-            ("std_density_kg_sm3",    "Dens.std"),
-            ("molar_mass",            "MM"),
-            ("h2_pct",                "H\u2082 (%)"),
-            ("gas_comp",              "Comp.gas"),
-            ("throughput_sm3h",       "Throughput"),
-            ("node_type",             "Tipo nodo"),
+            ("pressure_bar",          tr("mapping.fs_pressure")),
+            ("volumetric_flow_sm3s",  tr("mapping.fs_vol_flow")),
+            ("energy_flow_mw",        tr("mapping.fs_energy_flow")),
+            ("temperature_k",         tr("mapping.fs_temp")),
+            ("sp_gravity",            tr("mapping.fs_sp_gravity")),
+            ("z_factor",              tr("mapping.f_z_factor")),
+            ("hhv_mj_sm3",            tr("mapping.fs_hhv")),
+            ("wobbe_mj_sm3",          tr("mapping.fs_wobbe")),
+            ("density_kg_m3",         tr("mapping.fs_density")),
+            ("std_density_kg_sm3",    tr("mapping.fs_std_density")),
+            ("molar_mass",            tr("mapping.fs_mm")),
+            ("h2_pct",                tr("mapping.f_h2_pct")),
+            ("gas_comp",              tr("mapping.fs_gas_comp")),
+            ("throughput_sm3h",       tr("mapping.fs_throughput")),
+            ("node_type",             tr("mapping.fs_node_type")),
         ]
         node_grid = QGridLayout()
         for col, (fid, fname) in enumerate(_node_fields):
@@ -989,29 +1512,29 @@ class LayerMappingPanel(QWidget):
         sim_layout.addWidget(grp_nodes)
 
         # -- Condotte ----------------------------------------------------------
-        grp_pipes = QGroupBox("Condotte")
+        grp_pipes = QGroupBox(tr("mapping.grp_pipes"))
         rlayout_p = QVBoxLayout(grp_pipes)
         rlayout_p.setSpacing(4)
         rform_p = QFormLayout()
         rform_p.setLabelAlignment(Qt.AlignRight)
         self.cb_res_pipes_color = QComboBox()
-        self.cb_res_pipes_color.addItem("Portata (Smc/h)",      "flow_abs_sm3h")
-        self.cb_res_pipes_color.addItem("Velocit\u00e0 (m/s)",  "velocity_m_s")
-        self.cb_res_pipes_color.addItem("Press. media (bar)",   "avg_pressure_bar")
-        self.cb_res_pipes_color.addItem("Spec. gravity",        "sp_gravity")
-        self.cb_res_pipes_color.addItem("Z-factor",             "z_factor")
-        self.cb_res_pipes_color.addItem("Densit\u00e0 (kg/m3)", "density_kg_m3")
-        rform_p.addRow("Colora per:", self.cb_res_pipes_color)
+        self.cb_res_pipes_color.addItem(tr("mapping.fp_flow_abs"),      "flow_abs_sm3h")
+        self.cb_res_pipes_color.addItem(tr("mapping.fp_velocity"),  "velocity_m_s")
+        self.cb_res_pipes_color.addItem(tr("mapping.fp_avg_pressure"),   "avg_pressure_bar")
+        self.cb_res_pipes_color.addItem(tr("mapping.f_sp_gravity"),        "sp_gravity")
+        self.cb_res_pipes_color.addItem(tr("mapping.f_z_factor"),             "z_factor")
+        self.cb_res_pipes_color.addItem(tr("mapping.fp_density"), "density_kg_m3")
+        rform_p.addRow(tr("mapping.row_color_by"), self.cb_res_pipes_color)
         rlayout_p.addLayout(rform_p)
         self._res_pipe_checks = []
         _pipe_fields = [
-            ("flow_sm3h",        "Portata Smc/h"),
-            ("flow_abs_sm3h",    "|Portata| Smc/h"),
-            ("velocity_m_s",     "Velocit\u00e0"),
-            ("avg_pressure_bar", "Press.media"),
-            ("sp_gravity",       "Sp.gravity"),
-            ("z_factor",         "Z-factor"),
-            ("density_kg_m3",    "Densit\u00e0"),
+            ("flow_sm3h",        tr("mapping.fps_flow_signed")),
+            ("flow_abs_sm3h",    tr("mapping.fps_flow_abs")),
+            ("velocity_m_s",     tr("mapping.fps_velocity")),
+            ("avg_pressure_bar", tr("mapping.fps_avg_pressure")),
+            ("sp_gravity",       tr("mapping.fs_sp_gravity")),
+            ("z_factor",         tr("mapping.f_z_factor")),
+            ("density_kg_m3",    tr("mapping.fps_density")),
         ]
         pipe_grid = QGridLayout()
         for col, (fid, fname) in enumerate(_pipe_fields):
@@ -1023,28 +1546,27 @@ class LayerMappingPanel(QWidget):
         rlayout_p.addLayout(pipe_grid)
         sim_layout.addWidget(grp_pipes)
 
-        self.chk_flow_arrows = QCheckBox("Mostra frecce direzione flusso")
+        self.chk_flow_arrows = QCheckBox(tr("mapping.chk_flow_arrows"))
         self.chk_flow_arrows.setChecked(False)
-        self.chk_flow_arrows.setToolTip(
-            "Aggiunge una freccia al centro di ogni condotta, orientata nel verso del flusso del gas.")
+        self.chk_flow_arrows.setToolTip(tr("mapping.chk_flow_arrows_tooltip"))
         sim_layout.addWidget(self.chk_flow_arrows)
         layout.addWidget(grp_sim_opts)
 
         # -- Esporta dati --------------------------------------------------
-        grp_exp = QGroupBox("Esporta dati")
+        grp_exp = QGroupBox(tr("mapping.grp_export"))
         fl_exp = QFormLayout(grp_exp)
         fl_exp.setLabelAlignment(Qt.AlignRight)
 
         self.cb_viz_export_lyr = QComboBox()
-        fl_exp.addRow("Layer:", self.cb_viz_export_lyr)
+        fl_exp.addRow(tr("mapping.row_layer"), self.cb_viz_export_lyr)
 
         self.spin_viz_decimals = QSpinBox()
         self.spin_viz_decimals.setRange(0, 10)
         self.spin_viz_decimals.setValue(4)
-        self.spin_viz_decimals.setToolTip("Cifre decimali per i valori numerici nel CSV")
-        fl_exp.addRow("Decimali:", self.spin_viz_decimals)
+        self.spin_viz_decimals.setToolTip(tr("mapping.spin_viz_decimals_tooltip"))
+        fl_exp.addRow(tr("mapping.row_decimals"), self.spin_viz_decimals)
 
-        btn_exp = QPushButton("Esporta CSV")
+        btn_exp = QPushButton(tr("mapping.btn_export_csv"))
         btn_exp.clicked.connect(self._export_viz_csv)
         fl_exp.addRow("", btn_exp)
         layout.addWidget(grp_exp)
@@ -1089,11 +1611,11 @@ class LayerMappingPanel(QWidget):
         self.grp_field_pipes.setVisible(is_collapsed)
         self.grp_field_nodes.setVisible(is_collapsed)
         if is_collapsed:
-            self.btn_collapse.setText("> Genera CSV da Layer")
-            self.btn_collapse_sim.setText("\u25b6  Avvia Simulazione")
+            self.btn_collapse.setText(tr("mapping.btn_collapse_from_layer"))
+            self.btn_collapse_sim.setText(tr("mapping.btn_start_sim"))
         else:
-            self.btn_collapse.setText("> Genera CSV")
-            self.btn_collapse_sim.setText("\u25b6  Avvia Simulazione")
+            self.btn_collapse.setText(tr("mapping.btn_collapse"))
+            self.btn_collapse_sim.setText(tr("mapping.btn_start_sim"))
 
     def reload_layers(self):
         """Ripopola tutti i ComboBox dai layer del progetto QGIS.
@@ -1184,7 +1706,7 @@ class LayerMappingPanel(QWidget):
     def _refill_none(self, combo, layers, prev_data):
         combo.blockSignals(True)
         combo.clear()
-        combo.addItem("-- nessuno --", None)
+        combo.addItem(tr("mapping.none_item"), None)
         for l in layers:
             combo.addItem(self._layer_label(l), l)
         combo.blockSignals(False)
@@ -1196,7 +1718,7 @@ class LayerMappingPanel(QWidget):
         combo.blockSignals(True)
         combo.clear()
         if with_none:
-            combo.addItem("-- nessuno (usa placeholder) --", "")
+            combo.addItem(tr("mapping.none_placeholder_item"), "")
         if layer is not None:
             for field in layer.fields():
                 combo.addItem(field.name(), field.name())
@@ -1301,7 +1823,7 @@ class LayerMappingPanel(QWidget):
 
     def _browse_prepare_folder(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Seleziona cartella output CSV", "",
+            self, tr("mapping.browse_out_dir_caption"), "",
             QFileDialog.ShowDirsOnly)
         if folder:
             self.txt_prepare_folder.setText(folder)
@@ -1350,14 +1872,14 @@ class LayerMappingPanel(QWidget):
         # fluttua sopra la mappa senza portare in primo piano il pannello plugin
         _main_win = self.iface.mainWindow() if self.iface else self
         dlg = QDialog(_main_win)
-        dlg.setWindowTitle("⚠ Avvisi rete")
+        dlg.setWindowTitle(tr("mapping.warn_dlg_title"))
         # Finestra indipendente (Tool): non nasconde la mappa, non ha WindowStaysOnTopHint
         dlg.setWindowFlags(Qt.Tool | Qt.WindowCloseButtonHint)
         dlg.setAttribute(Qt.WA_DeleteOnClose)
         dlg.setMinimumWidth(620)
         layout = QVBoxLayout(dlg)
 
-        lbl = QLabel("<b>Problemi rilevati durante il collasso:</b>")
+        lbl = QLabel(tr("mapping.warn_dlg_lbl"))
         layout.addWidget(lbl)
 
         txt = QTextEdit()
@@ -1379,8 +1901,8 @@ class LayerMappingPanel(QWidget):
                     self.iface.mainWindow().raise_()
                     self.iface.mainWindow().activateWindow()
 
-            btn_zoom = QPushButton("🔍  Zoom su condotte")
-            btn_zoom.setToolTip("Centra e zooma la mappa sulle condotte problematiche.")
+            btn_zoom = QPushButton(tr("mapping.btn_zoom"))
+            btn_zoom.setToolTip(tr("mapping.btn_zoom_tooltip"))
             def _do_zoom():
                 try:
                     from qgis.core import QgsRectangle, QgsCoordinateTransform, QgsProject
@@ -1407,10 +1929,8 @@ class LayerMappingPanel(QWidget):
             btn_zoom.clicked.connect(_do_zoom)
             btn_row.addWidget(btn_zoom)
 
-            btn_flash = QPushButton("🔦  Flash")
-            btn_flash.setToolTip(
-                "Fa lampeggiare sulla mappa le condotte con problemi.\n"
-                "Puoi cliccare più volte.")
+            btn_flash = QPushButton(tr("mapping.btn_flash"))
+            btn_flash.setToolTip(tr("mapping.btn_flash_tooltip"))
             def _do_flash():
                 try:
                     from PyQt5.QtGui import QColor
@@ -1433,8 +1953,7 @@ class LayerMappingPanel(QWidget):
             from PyQt5.QtCore import QTimer
             QTimer.singleShot(400, lambda: (_do_zoom(), _do_flash()))
         else:
-            lbl_no = QLabel("<i style='color:gray'>Coordinate non disponibili per il flash<br>"
-                            "(condotte generate dal collasso, non dal layer originale).</i>")
+            lbl_no = QLabel(tr("mapping.warn_no_geom"))
             lbl_no.setTextFormat(Qt.RichText)
             layout.addWidget(lbl_no)
 
@@ -1456,6 +1975,8 @@ class LayerMappingPanel(QWidget):
         self.btn_collapse_sim.setEnabled(enabled)
         self.chk_sim_24.setEnabled(enabled)
         self.spin_ora.setEnabled(enabled)
+        if hasattr(self, 'btn_campaign'):
+            self.btn_campaign.setEnabled(enabled)
 
     def _phys_params(self) -> dict:
         """Legge i parametri fisici da Tab 2 (usati sia per export che per sim)."""
@@ -1606,10 +2127,8 @@ class LayerMappingPanel(QWidget):
                     self._log_prepare(
                         "ERRORE: 0 nodi reference! Verifica il campo 'Flag reference' e il suo valore.")
                     QMessageBox.critical(
-                        self, "Nessun nodo reference",
-                        "Nessun nodo reference trovato nel layer nodi.\n\n"
-                        "La simulazione richiede almeno un nodo a pressione fissa.\n"
-                        "Verifica il campo 'Flag reference' e il suo valore.")
+                        self, tr("mapping.no_ref_title"),
+                        tr("mapping.no_ref_msg"))
                     return
 
             self._log_prepare("-" * 40)
@@ -1636,60 +2155,53 @@ class LayerMappingPanel(QWidget):
         if not self.chk_already_collapsed.isChecked():
             # Modalità A
             if self.cb_pipes.currentData() is None:
-                errors.append("Nessun layer condotte selezionato (Modalità A).")
+                errors.append(tr("mapping.err_no_pipes_a"))
             nodes_lyr = self.cb_nodes.currentData()
             if nodes_lyr is None:
-                warnings_list.append(
-                    "Nessun layer nodi selezionato: non ci saranno nodi reference.\n"
-                    "La simulazione fallirà senza almeno un nodo a pressione fissa.")
+                warnings_list.append(tr("mapping.warn_no_nodes_layer"))
             else:
                 ref_field = self.cb_f_nodes_ref.currentData() or ''
                 if not ref_field:
-                    warnings_list.append(
-                        "Campo 'Flag reference' non selezionato nel layer nodi.\n"
-                        "GasNetSim tratterà tutti i nodi agganciati come reference.")
+                    warnings_list.append(tr("mapping.warn_no_ref_field_a"))
                 elif not self.txt_nodes_ref_val.text().strip():
-                    warnings_list.append(
-                        "Valore 'Flag reference' vuoto: tutti i nodi agganciati\n"
-                        "saranno trattati come reference (potrebbe non essere corretto).")
+                    warnings_list.append(tr("mapping.warn_empty_ref_val_a"))
         else:
             # Modalità B
             if self.cb_coll_pipes.currentData() is None:
-                errors.append("Nessun layer condotte collassate selezionato (Modalità B).")
+                errors.append(tr("mapping.err_no_pipes_b"))
             if self.cb_coll_nodes.currentData() is None:
-                errors.append("Nessun layer nodi collassati selezionato (Modalità B).")
+                errors.append(tr("mapping.err_no_nodes_b"))
             else:
                 ref_flag = self.cb_f_ref_flag.currentData() or ''
                 if not ref_flag:
-                    warnings_list.append(
-                        "Campo 'Flag reference' non selezionato nel layer nodi.\n"
-                        "GasNetSim tratterà tutti i nodi come reference.")
+                    warnings_list.append(tr("mapping.warn_no_ref_field_b"))
                 elif not self.txt_ref_value.text().strip():
-                    warnings_list.append(
-                        "Valore 'Flag reference' vuoto: tutti i nodi saranno\n"
-                        "trattati come reference (potrebbe non essere corretto).")
+                    warnings_list.append(tr("mapping.warn_empty_ref_val_b"))
 
         if self.chk_enable_compressor.isChecked():
             pout = self.cb_f_nodes_comp_pout.currentData() or self.cb_f_nodes_comp_pout.currentText().strip()
             if not pout:
-                warnings_list.append(
-                    "Hai attivato il compressore ma NON hai specificato un campo o un valore numerico per 'Pressione OUT'.\n"
-                    "Il simulatore utilizzerà un ratio di default debole (1.1) che causerà molto probabilmente\n"
-                    "il fallimento della simulazione (stallo a 0.00 bar) in condizioni di forte carico.")
+                warnings_list.append(tr("mapping.warn_comp_pout"))
+
+        # In campagna (19 giorni non presidiati) NON si mostrano dialoghi
+        # modali: un errore reale ferma la campagna in silenzio (loggato dal
+        # chiamante), i warning si ignorano.
+        if getattr(self, '_campaign_active', False):
+            return not errors
 
         if errors:
             QMessageBox.critical(
-                self, "Dati mancanti",
-                "Non è possibile avviare la simulazione:\n\n"
+                self, tr("mapping.err_missing_data_title"),
+                tr("mapping.err_missing_data_prefix")
                 + "\n".join(f"\u2022 {e}" for e in errors))
             return False
 
         if warnings_list:
             reply = QMessageBox.warning(
-                self, "Verifica parametri",
-                "Attenzione — potrebbero mancare dati importanti:\n\n"
+                self, tr("mapping.warn_check_params_title"),
+                tr("mapping.warn_check_params_prefix")
                 + "\n\n".join(f"\u26a0 {w}" for w in warnings_list)
-                + "\n\nVuoi continuare comunque?",
+                + tr("mapping.warn_check_params_suffix"),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -1698,31 +2210,341 @@ class LayerMappingPanel(QWidget):
 
         return True
 
+    # ==================================================================
+    #  CAMPAGNA MULTI-GIORNO
+    #  Esegue in sequenza il batch 24h su tutti i file-giorno di una
+    #  cartella (es. i 19 GeoJSON dello Scenario 1). Ogni giorno riusa
+    #  l'intero flusso del batch (collasso + 24 ore in parallelo); il
+    #  passaggio al giorno dopo avviene alla fine del batch (is_last in
+    #  _on_sim_finished). Solo file, niente mappa.
+    # ==================================================================
+    def _run_campaign(self):
+        from pathlib import Path
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QListWidget, QListWidgetItem, QDialogButtonBox, QLabel
+        from PyQt5.QtCore import Qt
+        from qgis.core import QgsProject
+
+        if getattr(self, '_campaign_active', False):
+            self._log_run("Campagna già in corso.", 'orange')
+            return
+
+        # La topologia (condotte) resta fissa: serve un layer condotte.
+        if not self.chk_already_collapsed.isChecked() and self.cb_pipes.currentData() is None:
+            QMessageBox.critical(self, tr("mapping.campaign_title"),
+                                 tr("mapping.campaign_need_pipes"))
+            return
+
+        start_dir = (getattr(self, '_campaign_last_dir', '')
+                     or self.txt_prepare_folder.text().strip() or '')
+
+        # Scelta del metodo di input
+        dlg_choice = QDialog(self)
+        dlg_choice.setWindowTitle(tr("mapping.campaign_source_title"))
+        vbox_choice = QVBoxLayout(dlg_choice)
+        vbox_choice.addWidget(QLabel(tr("mapping.campaign_source_question")))
+        btn_files = QPushButton(tr("mapping.campaign_btn_files"))
+        btn_layers = QPushButton(tr("mapping.campaign_btn_layers"))
+        vbox_choice.addWidget(btn_files)
+        vbox_choice.addWidget(btn_layers)
+        
+        choice = []
+        def _set_choice(c):
+            choice.append(c)
+            dlg_choice.accept()
+            
+        btn_files.clicked.connect(lambda: _set_choice("files"))
+        btn_layers.clicked.connect(lambda: _set_choice("layers"))
+        
+        if dlg_choice.exec_() != QDialog.Accepted or not choice:
+            return
+            
+        input_type = choice[0]
+        files = []
+        
+        if input_type == "files":
+            _files, _ = QFileDialog.getOpenFileNames(
+                self,
+                tr("mapping.campaign_files_dlg_caption"),
+                start_dir,
+                tr("mapping.campaign_files_filter"))
+            if not _files:
+                return
+            files = sorted(_files)
+            self._campaign_last_dir = str(Path(files[0]).parent)
+        else:
+            dlg_layers = QDialog(self)
+            dlg_layers.setWindowTitle(tr("mapping.campaign_layers_title"))
+            dlg_layers.resize(400, 300)
+            vbox_layers = QVBoxLayout(dlg_layers)
+            vbox_layers.addWidget(QLabel(tr("mapping.campaign_layers_hint")))
+            list_layers = QListWidget()
+            layers_dict = QgsProject.instance().mapLayers()
+            for lyr_id, lyr in layers_dict.items():
+                if int(lyr.type()) == 0: # 0 = QgsMapLayerType.VectorLayer
+                    item = QListWidgetItem(lyr.name())
+                    item.setData(Qt.UserRole, lyr.id())
+                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                    item.setCheckState(Qt.Unchecked)
+                    list_layers.addItem(item)
+            vbox_layers.addWidget(list_layers)
+            
+            bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            bbox.accepted.connect(dlg_layers.accept)
+            bbox.rejected.connect(dlg_layers.reject)
+            vbox_layers.addWidget(bbox)
+            
+            if dlg_layers.exec_() != QDialog.Accepted:
+                return
+                
+            for i in range(list_layers.count()):
+                item = list_layers.item(i)
+                if item.checkState() == Qt.Checked:
+                    files.append(item.data(Qt.UserRole))
+            
+            if not files:
+                return
+            self._campaign_last_dir = start_dir
+
+        # 2) Cartella di OUTPUT
+        base_out = self.txt_prepare_folder.text().strip()
+        if not base_out:
+            base_out = QFileDialog.getExistingDirectory(
+                self, tr("mapping.campaign_out_dir_caption"), self._campaign_last_dir)
+            if not base_out:
+                return
+            self.txt_prepare_folder.setText(base_out)
+
+        def _get_name(x):
+            lyr = QgsProject.instance().mapLayer(x)
+            if lyr: return lyr.name()
+            if isinstance(x, str) and (Path(x).exists() or "/" in x or "\\" in x):
+                return Path(x).name
+            return str(x)
+
+        _names = "\n".join(f"  • {_get_name(f)}" for f in files[:25])
+        _more = "" if len(files) <= 25 else tr("mapping.campaign_more_files", n=len(files) - 25)
+        reply = QMessageBox.question(
+            self, tr("mapping.campaign_start_title"),
+            tr("mapping.campaign_start_msg",
+               n_files=len(files), n_sims=len(files) * 24, names=f"{_names}{_more}"),
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        # Stato campagna
+        self._campaign_active = True
+        self._campaign_files = files
+        self._campaign_idx = 0
+        self._campaign_summary = []            # (nome, n_conv, launched, failed, elapsed)
+        self._campaign_base_out = base_out
+        self._campaign_layer_id = None
+        self._campaign_start_time = time.time()
+        # Forza export-only + 24h; ricorda gli stati per ripristinarli a fine.
+        self._campaign_prev_only_export = self.chk_only_export.isChecked()
+        self._campaign_prev_sim24 = self.chk_sim_24.isChecked()
+        self.chk_only_export.setChecked(True)
+        self.chk_sim_24.setChecked(True)
+
+        # FOTOGRAFIA delle mappature dei campi impostate ORA (configurazione che
+        # l'utente ha gia' validato con la run singola). Cambiando layer nodi a
+        # ogni giorno, i combo dei campi si ripopolano e l'auto-selezione puo'
+        # sbagliare (bug: si perdeva 'Totale_Smc' → domanda oraria a zero →
+        # compressore mal posto → stallo). Le ri-applichiamo identiche a ogni
+        # giorno: i 19 file hanno lo stesso schema, quindi i nomi-campo esistono
+        # sempre. Salviamo (currentData, currentText) per i combo editabili.
+        self._campaign_field_map = {}
+        for _name in ('cb_f_nodes_flow', 'cb_f_nodes_ref',
+                      'cb_f_nodes_comp_field', 'cb_f_nodes_comp_pout',
+                      'cb_diam_field', 'cb_diam_unit'):
+            _cb = getattr(self, _name, None)
+            if _cb is not None:
+                self._campaign_field_map[_name] = (
+                    _cb.currentData(),
+                    _cb.currentText() if _cb.isEditable() else None,
+                )
+
+        self.txt_log_run.clear()
+        self._log_run("=" * 50, 'green')
+        self._log_run(tr("mapping.log_campaign_start",
+                          ndays=len(files), ntot=len(files) * 24), 'green')
+        self._log_run("=" * 50, 'green')
+        self._set_buttons_enabled(False)
+        self._start_next_campaign_day()
+
+    def _start_next_campaign_day(self):
+        from pathlib import Path
+        from qgis.core import QgsVectorLayer, QgsProject
+
+        idx = self._campaign_idx
+        files = self._campaign_files
+        if idx >= len(files):
+            self._finalize_campaign()
+            return
+
+        path_or_id = files[idx]
+        lyr = None
+        loaded_from_file = False
+        
+        existing_lyr = QgsProject.instance().mapLayer(path_or_id)
+        if existing_lyr:
+            lyr = existing_lyr
+            name = lyr.name()
+        else:
+            name = Path(path_or_id).stem
+            lyr = QgsVectorLayer(path_or_id, name, "ogr")
+            loaded_from_file = True
+
+        self._campaign_day_name = name
+        self._campaign_day_start = time.time()
+        self._log_run("", '')
+        self._log_run(f"── GIORNO {idx + 1}/{len(files)}: {name} "
+                      f"{'─' * 20}", 'green')
+
+        if not lyr or not lyr.isValid():
+            self._log_run(f"  ⚠ layer/file non valido, salto: {name}", 'orange')
+            self._campaign_summary.append((name, 0, 0, [], 0.0))
+            self._campaign_idx += 1
+            self._schedule_next_campaign_day()
+            return
+
+        if loaded_from_file:
+            QgsProject.instance().addMapLayer(lyr)
+            self._campaign_layer_id = lyr.id()
+            _lyr_id = lyr.id()
+        else:
+            # Non impostiamo _campaign_layer_id cosi' a fine giorno NON viene rimosso 
+            # dal progetto, siccome era gia' presente originariamente.
+            self._campaign_layer_id = None
+            _lyr_id = lyr.id()
+            
+        self.reload_layers()
+        # Seleziona il layer-giorno come layer nodi (Modalità A). Confronto per
+        # ID, NON per identita' (is): QGIS puo' restituire un wrapper Python
+        # diverso per lo stesso layer C++, e `is` fallirebbe silenziosamente.
+        _sel = False
+        for i in range(self.cb_nodes.count()):
+            _it = self.cb_nodes.itemData(i)
+            if _it is not None and _it.id() == _lyr_id:
+                self.cb_nodes.setCurrentIndex(i)
+                _sel = True
+                break
+        if not _sel:
+            self._log_run(f"  ⚠ non riesco a selezionare il layer del giorno "
+                          f"'{name}' nel combo nodi.", 'orange')
+        self._on_nodes_layer_changed(self.cb_nodes.currentIndex())
+
+        # RI-APPLICA le mappature dei campi fotografate all'avvio: cambiando
+        # layer l'auto-selezione puo' perdere 'Totale_Smc' (→ domanda a zero).
+        for _name, (_data, _text) in getattr(self, '_campaign_field_map', {}).items():
+            _cb = getattr(self, _name, None)
+            if _cb is None:
+                continue
+            _done = False
+            if _data is not None:
+                for i in range(_cb.count()):
+                    if _cb.itemData(i) == _data:
+                        _cb.setCurrentIndex(i)
+                        _done = True
+                        break
+            if not _done and _text and _cb.isEditable():
+                _cb.setEditText(_text)
+
+        # Cartella di output dedicata al giorno.
+        day_out = Path(self._campaign_base_out) / name
+        try:
+            day_out.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        self.txt_prepare_folder.setText(str(day_out))
+
+        # Avvia il batch 24h per questo giorno (riusa tutto il flusso esistente).
+        self._run_and_simulate()
+
+    def _schedule_next_campaign_day(self):
+        """Passa al giorno dopo sul loop degli eventi (lascia a Qt il tempo di
+        distruggere i thread appena terminati)."""
+        from qgis.PyQt.QtCore import QTimer
+        QTimer.singleShot(50, self._start_next_campaign_day)
+
+    def _finalize_campaign(self):
+        from pathlib import Path
+        summ = getattr(self, '_campaign_summary', []) or []
+        total_elapsed = time.time() - getattr(self, '_campaign_start_time', time.time())
+        _mm, _ss = divmod(total_elapsed, 60)
+        _hh, _mm = divmod(int(_mm), 60)
+        _tstr = (f"{_hh}h {int(_mm):02d}m" if _hh else
+                 (f"{int(_mm)}m {int(_ss):02d}s" if _mm else f"{_ss:.1f}s"))
+
+        tot_conv = sum(n for _n, n, _l, _f, _e in summ)
+        tot_launched = sum(l for _n, _c, l, _f, _e in summ)
+        days_full = sum(1 for _n, c, l, _f, _e in summ if l > 0 and c == l)
+
+        self._log_run("", '')
+        self._log_run("=" * 50, 'green')
+        self._log_run(tr("mapping.log_campaign_summary_title"), 'green')
+        self._log_run("=" * 50, 'green')
+        self._log_run(tr("mapping.log_campaign_days_done", n=len(summ)), 'green')
+        self._log_run(tr("mapping.log_campaign_days_full", n=days_full, tot=len(summ)),
+                      'green' if days_full == len(summ) else 'orange')
+        self._log_run(tr("mapping.log_campaign_sims_conv", n=tot_conv, tot=tot_launched),
+                      'green' if tot_conv == tot_launched else 'orange')
+        for name, n_conv, launched, failed, _e in summ:
+            _c = 'green' if (launched > 0 and n_conv == launched) else 'orange'
+            _fh = (tr("mapping.log_campaign_not_conv",
+                      hours=", ".join(f"h{o}" for o in failed))) if failed else ""
+            self._log_run(f"    {name}: {n_conv}/{launched}{_fh}", _c)
+        self._log_run(tr("mapping.log_campaign_total_time", t=_tstr), 'green')
+        self._log_run("=" * 50, 'green')
+
+        # Ripristina gli stati dei checkbox e la cartella base.
+        try:
+            self.chk_only_export.setChecked(getattr(self, '_campaign_prev_only_export', False))
+            self.chk_sim_24.setChecked(getattr(self, '_campaign_prev_sim24', False))
+            self.txt_prepare_folder.setText(getattr(self, '_campaign_base_out', ''))
+        except Exception:
+            pass
+        self._campaign_active = False
+        self._set_buttons_enabled(True)
+
     def _run_and_simulate(self):
         """
         Esporta i CSV e avvia la simulazione.
         Se l'utente ha spuntato 'chk_sim_24', esegue 24 simulazioni in parallelo.
         """
+        _in_campaign = getattr(self, '_campaign_active', False)
         if not self._validate_before_run():
+            if _in_campaign:
+                # Non bloccare la campagna: segna il giorno come fallito e prosegui.
+                self._log_run("  ⚠ validazione fallita, giorno saltato.", 'orange')
+                self._campaign_summary.append(
+                    (getattr(self, '_campaign_day_name', '?'), 0, 0, [], 0.0))
+                self._campaign_idx += 1
+                self._schedule_next_campaign_day()
             return
-            
+
         is_parallel = hasattr(self, 'chk_sim_24') and self.chk_sim_24.isChecked()
         from pathlib import Path
         user_folder = self.txt_prepare_folder.text().strip()
-        
+
         if is_parallel and not user_folder:
             self._log_run("ERRORE: per simulare 24 ore in parallelo devi selezionare una cartella di output.", 'red')
+            if _in_campaign:
+                self._campaign_summary.append(
+                    (getattr(self, '_campaign_day_name', '?'), 0, 0, [], 0.0))
+                self._campaign_idx += 1
+                self._schedule_next_campaign_day()
             return
 
         self._set_buttons_enabled(False)
-        self.txt_log_run.clear()
+        if not _in_campaign:
+            self.txt_log_run.clear()
         
         import time
         self._batch_start_time = time.time()
         
         if is_parallel:
             self._log_run("=" * 50)
-            self._log_run("  AVVIO SIMULAZIONE 24 ORE (PARALLELO)", 'green')
+            self._log_run(tr("mapping.log_batch24_start"), 'green')
             self._log_run("=" * 50)
             
             phys = self._phys_params()
@@ -1776,6 +2598,19 @@ class LayerMappingPanel(QWidget):
                     if _pj.exists():
                         self._batch_pending_json = str(_pj)
 
+                    # Copia la mappa collasso→fid originali (scritta dal collasso
+                    # nella cartella temporanea) nella cartella di output, cosi
+                    # resta accessibile: dato un collo di bottiglia sul modello
+                    # collassato, dice quali condotte ORIGINALI (fid) modificare.
+                    try:
+                        import shutil as _sh
+                        _cm = Path(tmp_out) / 'collapse_map.csv'
+                        if _cm.exists() and user_folder:
+                            _sh.copy2(str(_cm), str(Path(user_folder) / 'collapse_map.csv'))
+                            self._log_run("Mappa collasso→fid salvata: collapse_map.csv", '')
+                    except Exception:
+                        pass
+
                     self._last_orig_pipes_lyr = pipe_layer
                     self._last_orig_nodes_lyr = self.cb_nodes.currentData()
                 else:
@@ -1793,10 +2628,19 @@ class LayerMappingPanel(QWidget):
                 self._active_sim_workers = []   # per il tasto Ferma nel batch
                 self._batch_conv = []       # (ora, converged) per il riepilogo finale
                 self._batch_launched = 0    # quante ore effettivamente avviate
+                self._batch_queue = []      # ore in attesa di uno slot libero (throttling core)
+                self._batch_cancelled = False
                 self._log_run("Creazione rapida di tutti i CSV in corso...", 'orange')
+                # --- FASE 1: Estrazione Dati e Calcolo Carico Orario (Pre-Simulazione) ---
+                out_dirs = []
+                hourly_loads = []
+                
+                run_dir, run_label = _next_run_subdir(user_folder)
+                run_dir.mkdir(parents=True, exist_ok=True)
+                
                 for i in range(24):
-                    run_dir, run_label = _next_run_subdir(user_folder)
-                    out_input_dir = str(run_dir / "input")
+                    out_input_dir = str(run_dir / f"input_h{i:02d}")
+                    out_dirs.append(out_input_dir)
                     
                     if not self.chk_already_collapsed.isChecked():
                         _f_pipe_id = 'pipe_id'
@@ -1844,37 +2688,89 @@ class LayerMappingPanel(QWidget):
                         f_flow=_f_flow,
                         flow_sep=self.cb_separator.currentData() or ';',
                     )
-
-                    # ── Compressori nel batch 24h ──────────────────────────
-                    # export_layers_to_csv NON gestisce i compressori (lo fa
-                    # run_collapse_pipeline, usato solo nel run singolo). Nel
-                    # batch il collasso e la marcatura avvengono UNA VOLTA in
-                    # una cartella temp condivisa (_batch_pending_json). Qui si
-                    # copia quel _pending_compressors.json nella cartella di
-                    # OGNI ora, cosi il worker inietta la stazione di Enna.
-                    # Senza questa copia tutte le 24 ore giravano 338x338
-                    # STANDARD, senza compressore.
-                    if self.chk_enable_compressor.isChecked() and \
-                            getattr(self, '_batch_pending_json', None):
-                        try:
-                            import shutil
-                            _dst = Path(out_input_dir) / '_pending_compressors.json'
-                            shutil.copy2(self._batch_pending_json, str(_dst))
-                        except Exception as _exc:
-                            self._log_run(
-                                f"⚠ Ora {i}: impossibile copiare la marcatura "
-                                f"compressore: {_exc}", 'orange')
                     
                     if c_ref == 0:
                         self._log_run(f"ERRORE: Ora {i}: 0 nodi reference trovati!", 'red')
+                        hourly_loads.append(0.0)
                         continue
+                        
+                    # Calcolo del carico totale della rete per l'ora corrente (Proxy proxy Cut-in)
+                    import pandas as pd
+                    try:
+                        df_nodes = pd.read_csv(Path(out_input_dir) / 'sf_nodes.csv', sep=';')
+                        if 'flow_sm3_per_s' in df_nodes.columns:
+                            tot_load = pd.to_numeric(df_nodes['flow_sm3_per_s'], errors='coerce').sum() * 3600.0
+                            hourly_loads.append(tot_load)
+                        else:
+                            hourly_loads.append(0.0)
+                    except Exception:
+                        hourly_loads.append(0.0)
+
+                # --- FASE 2: Dispatching Day-Ahead (Isteresi MRT e Cut-In) ---
+                compressor_schedule = [False] * 24
+                if self.chk_enable_compressor.isChecked() and getattr(self, '_batch_pending_json', None):
+                    self._log_run("🔧 Calcolo Dispacciamento Day-Ahead: applicazione Isteresi MRT (6h)...", 'orange')
+                    UTILIZATION_FACTOR = 0.1152 # Snam 2018 (11.52% annuo)
+                    MIN_RUN_TIME = 6
                     
+                    sorted_loads = sorted(hourly_loads, reverse=True)
+                    target_on_hours = max(1, int(24 * UTILIZATION_FACTOR))
+                    cut_in_threshold = sorted_loads[target_on_hours - 1] if sorted_loads else 0
+                    
+                    hours_left_on = 0
+                    for i in range(24):
+                        if hourly_loads[i] >= cut_in_threshold and hourly_loads[i] > 0:
+                            if hours_left_on == 0:
+                                hours_left_on = MIN_RUN_TIME
+                        if hours_left_on > 0:
+                            compressor_schedule[i] = True
+                            hours_left_on -= 1
+
+                    try:
+                        ts_path = Path(user_folder) / "enna_timesheet_day_ahead.csv"
+                        df_ts = pd.DataFrame({
+                            'Hour': range(24),
+                            'Total_Load_Smc_h': hourly_loads,
+                            'Compressor_ON': compressor_schedule
+                        })
+                        df_ts.to_csv(ts_path, index=False)
+                        self._log_run(f"Timesheet salvato in: {ts_path.name}", 'green')
+                    except Exception:
+                        pass
+
+                # --- FASE 3: Lancio Simulazioni (throttlato ai core fisici) ---
+                # Prima si lanciavano sempre tutte e 24 le ore in un colpo solo,
+                # a prescindere dai core disponibili: su macchine con pochi core
+                # 24 processi si contendono la CPU e rallentano tutti insieme.
+                # Ora si accodano e si lancia solo _max_parallel_sims() alla
+                # volta; _on_sim_finished ne fa partire una nuova ogni volta che
+                # se ne libera una, mantenendo la concorrenza al massimo utile
+                # senza mai superarlo.
+                max_parallel = self._max_parallel_sims()
+                self._log_run(
+                    tr("mapping.log_batch_concurrency",
+                       n=max_parallel, logical=os.cpu_count()), '')
+                for i in range(24):
+                    out_input_dir = out_dirs[i]
+
+                    if self.chk_enable_compressor.isChecked() and getattr(self, '_batch_pending_json', None):
+                        if compressor_schedule[i]:
+                            try:
+                                import shutil
+                                _dst = Path(out_input_dir) / '_pending_compressors.json'
+                                shutil.copy2(self._batch_pending_json, str(_dst))
+                            except Exception as _exc:
+                                self._log_run(f"⚠ Ora {i}: impossibile iniettare compressore: {_exc}", 'orange')
+                        else:
+                            self._log_run(f"  [h{i}] Compressore in BYPASS (Fuori finestra MRT)", '')
+
                     params_i = self.get_params()
                     params_i['cartella'] = out_input_dir
                     params_i['ora'] = i
                     params_i['is_batch'] = True
-                    self._start_simulation(params_i, is_batch=True)
-                    self._batch_launched += 1
+                    self._batch_queue.append(params_i)
+
+                self._launch_queued_batch_jobs()
                     
             except Exception as exc:
                 import traceback
@@ -1887,6 +2783,7 @@ class LayerMappingPanel(QWidget):
         user_folder = self.txt_prepare_folder.text().strip()
         if user_folder:
             run_dir, run_label = _next_run_subdir(user_folder)
+            run_dir.mkdir(parents=True, exist_ok=True)
             out_input_dir = str(run_dir / "input")
         else:
             import tempfile
@@ -2005,10 +2902,8 @@ class LayerMappingPanel(QWidget):
                     self._log_prepare(
                         "ERRORE: 0 nodi reference! Verifica il campo 'Flag reference' e il suo valore.")
                     QMessageBox.critical(
-                        self, "Nessun nodo reference",
-                        "Nessun nodo reference trovato nel layer nodi.\n\n"
-                        "La simulazione richiede almeno un nodo a pressione fissa.\n"
-                        "Verifica il campo 'Flag reference' e il suo valore.")
+                        self, tr("mapping.no_ref_title"),
+                        tr("mapping.no_ref_msg"))
                     return
 
             self._log_prepare("-" * 40)
@@ -2046,6 +2941,7 @@ class LayerMappingPanel(QWidget):
         cartella = self._last_input_dir or self.txt_prepare_folder.text().strip()
         return {
             'cartella':         cartella,
+            'ora':              self.spin_ora.value(),
             'pressure_pa':      phys['pressure_ref_pa'],
             'temperature_k':    phys['temp_ref_k'],
             'junction_flow':    self.spin_jflow.value(),
@@ -2093,6 +2989,36 @@ class LayerMappingPanel(QWidget):
             self._sim_worker = None
             return False
 
+    @staticmethod
+    def _max_parallel_sims() -> int:
+        """Stima quante simulazioni far girare in parallelo nel batch 24 ore.
+
+        os.cpu_count() conta i core LOGICI: su CPU con hyperthreading (quasi
+        tutte) sono il doppio dei core fisici. Per un carico CPU-bound come
+        Newton-Raphson/numba i due thread di un core fisico si contendono le
+        stesse unita' di calcolo, quindi non raddoppiano il throughput reale.
+        Euristica: meta' dei core logici (arrotondato per difetto, minimo 1).
+        Non e' precisa quanto psutil.cpu_count(logical=False) (non disponibile
+        nell'ambiente Python di QGIS), ma evita di aggiungere una dipendenza
+        solo per questo.
+        """
+        n_logical = os.cpu_count() or 4
+        return max(1, n_logical // 2)
+
+    def _launch_queued_batch_jobs(self):
+        """Lancia simulazioni dalla coda batch (`self._batch_queue`) finche'
+        non si raggiunge `_max_parallel_sims()` simulazioni attive insieme.
+        Richiamata sia dopo aver accodato le 24 ore sia da _on_sim_finished
+        ogni volta che una simulazione libera uno slot, cosi' la concorrenza
+        resta sempre al massimo utile senza mai superarlo."""
+        if getattr(self, '_batch_cancelled', False):
+            return
+        max_parallel = self._max_parallel_sims()
+        while self._batch_queue and len(self._active_sim_threads) < max_parallel:
+            params_i = self._batch_queue.pop(0)
+            self._start_simulation(params_i, is_batch=True)
+            self._batch_launched += 1
+
     def _start_simulation(self, params: dict, is_batch=False):
         """Avvia SimWorker in un QThread separato."""
         from .dashboard import SimWorker
@@ -2101,7 +3027,7 @@ class LayerMappingPanel(QWidget):
                 self._log_run("Simulazione già in corso. Attendere.", 'orange')
                 return
             self._log_run("=" * 50)
-            self._log_run("  Avvio simulazione GasNetSim...")
+            self._log_run(tr("mapping.log_single_start"))
             self._log_run("=" * 50)
             
         ora = params.get('ora', self.spin_ora.value())
@@ -2142,6 +3068,18 @@ class LayerMappingPanel(QWidget):
         """Interrompe la/e simulazione/i in corso (uccide i sottoprocessi)."""
         self._log_run("⏹ Interruzione richiesta: chiusura dei processi...", 'orange')
         self._batch_cancelled = True
+        # Svuota la coda: le ore non ancora avviate non partiranno piu'.
+        self._batch_queue = []
+        # Ferma anche la campagna: niente passaggio al giorno successivo.
+        if getattr(self, '_campaign_active', False):
+            self._campaign_active = False
+            self._log_run("⏹ Campagna interrotta dall'utente.", 'orange')
+            try:
+                self.chk_only_export.setChecked(getattr(self, '_campaign_prev_only_export', False))
+                self.chk_sim_24.setChecked(getattr(self, '_campaign_prev_sim24', False))
+                self.txt_prepare_folder.setText(getattr(self, '_campaign_base_out', ''))
+            except Exception:
+                pass
         n = 0
         worker = getattr(self, '_sim_worker', None)
         if worker is not None:
@@ -2191,8 +3129,12 @@ class LayerMappingPanel(QWidget):
             if is_batch and hasattr(self, '_active_sim_threads'):
                 if thread in self._active_sim_threads:
                     self._active_sim_threads.remove(thread)
-                    if len(self._active_sim_threads) == 0:
-                        is_last = True
+                # Slot appena liberato: fa partire la prossima ora in coda,
+                # se ce ne sono ancora (mantiene la concorrenza al massimo).
+                if getattr(self, '_batch_queue', None):
+                    self._launch_queued_batch_jobs()
+                if len(self._active_sim_threads) == 0 and not getattr(self, '_batch_queue', []):
+                    is_last = True
         elif self._sim_thread is not None:
             try:
                 self._sim_thread.quit()
@@ -2233,24 +3175,18 @@ class LayerMappingPanel(QWidget):
                     )
                     if self.iface is not None:
                         self.iface.mapCanvas().refresh()
-                    out_dir = self.txt_prepare_folder.text().strip()
+                    # I GPKG vanno nella STESSA cartella h<NN>_<ESITO> dei CSV.
+                    # `result` è la cartella di output restituita dal worker
+                    # (già organizzata per ora ed esito): CSV e GPKG insieme, e
+                    # il nome della cartella marca l'esito. Nessun suffisso: ogni
+                    # ora ha la propria cartella, quindi niente collisioni fra i
+                    # 24 processi del batch.
+                    out_dir = str(result) if result else self.txt_prepare_folder.text().strip()
                     if out_dir:
-                        from pathlib import Path
-                        # Se è un batch o se la cartella input è un run_XXX, salviamo i GPKG nella cartella padre (run_XXX)
-                        run_cartella = params.get('cartella', '')
-                        if is_batch and run_cartella:
-                            out_dir = str(Path(run_cartella).parent)
-                            
-                        # In batch i 24 processi salvano nella STESSA cartella:
-                        # il numero #N del layer è assegnato da un contatore che
-                        # va in gara fra i processi, quindi i nomi collidono. Si
-                        # aggiunge il suffisso ora (h00..h23), univoco, al nome
-                        # del file GPKG per evitare collisioni.
-                        _gpkg_suffix = f"h{ora:02d}" if (is_batch and ora is not None) else ""
                         if res_nodes is not None:
-                            res_nodes = self._persist_result_layer(res_nodes, out_dir, _gpkg_suffix)
+                            res_nodes = self._persist_result_layer(res_nodes, out_dir, "")
                         if res_pipes is not None:
-                            res_pipes = self._persist_result_layer(res_pipes, out_dir, _gpkg_suffix)
+                            res_pipes = self._persist_result_layer(res_pipes, out_dir, "")
                         if self.iface is not None:
                             self.iface.mapCanvas().refresh()
                     self._refresh_viz_combos()
@@ -2283,18 +3219,63 @@ class LayerMappingPanel(QWidget):
                 _c = "green" if all_ok else "orange"
 
                 self._log_run("=" * 50, _c)
-                self._log_run("  RIEPILOGO BATCH 24 ORE (PARALLELO)", _c)
+                self._log_run(tr("mapping.log_batch24_summary_title"), _c)
                 self._log_run("=" * 50, _c)
-                self._log_run(f"  Simulazioni converse:     {n_conv}/{launched}", _c)
+                self._log_run(tr("mapping.log_batch24_converged", n=n_conv, tot=launched), _c)
                 if failed_hours:
                     _fh = ", ".join(f"h{o}" for o in failed_hours)
-                    self._log_run(f"  NON converse (best iterate): {_fh}", "orange")
-                    self._log_run("     → per queste ore il risultato è il miglior iterato,", "orange")
-                    self._log_run("       NON una soluzione convergente: verificarle.", "orange")
+                    self._log_run(tr("mapping.log_batch24_not_converged", hours=_fh), "orange")
+                    self._log_run(tr("mapping.log_batch24_not_converged_note1"), "orange")
+                    self._log_run(tr("mapping.log_batch24_not_converged_note2"), "orange")
                 if skipped > 0:
-                    self._log_run(f"  Ore saltate (0 reference): {skipped}", "orange")
-                self._log_run(f"  Tempo totale (parallelo): {_tstr}", _c)
+                    self._log_run(tr("mapping.log_batch24_skipped", n=skipped), "orange")
+                self._log_run(tr("mapping.log_batch24_total_time", t=_tstr), _c)
                 self._log_run("=" * 50, _c)
+
+                # --- _RIEPILOGO.csv nella cartella del giorno/batch -----------
+                # Una riga per ora: ora, esito (OK/NONCONV), converso. La
+                # cartella e' quella di output corrente (il giorno in campagna,
+                # la base nel batch normale).
+                try:
+                    from pathlib import Path
+                    import csv as _csv
+                    _root = self.txt_prepare_folder.text().strip()
+                    if _root:
+                        _rc = sorted((o, c) for o, c in conv if o is not None)
+                        with open(str(Path(_root) / '_RIEPILOGO.csv'),
+                                  'w', newline='', encoding='utf-8') as _fh:
+                            _w = _csv.writer(_fh, delimiter=';')
+                            _w.writerow(['ora', 'esito', 'converso'])
+                            for _o, _cc in _rc:
+                                _w.writerow([f"h{_o:02d}",
+                                             'OK' if _cc else 'NONCONV',
+                                             1 if _cc else 0])
+                            _w.writerow([])
+                            _w.writerow(['TOTALE', f"{n_conv}/{launched}",
+                                         'tutte OK' if all_ok else 'verificare NONCONV'])
+                except Exception:
+                    pass
+
+                # --- Campagna: registra il giorno e passa al successivo -------
+                if getattr(self, '_campaign_active', False):
+                    day_name = getattr(self, '_campaign_day_name', '?')
+                    self._campaign_summary.append(
+                        (day_name, n_conv, launched, failed_hours, elapsed))
+                    self._log_run(
+                        f"  → Giorno '{day_name}': {n_conv}/{launched} converse.",
+                        _c)
+                    # Rimuovi il layer-giorno dal progetto (evita accumulo).
+                    try:
+                        from qgis.core import QgsProject
+                        _lid = getattr(self, '_campaign_layer_id', None)
+                        if _lid:
+                            QgsProject.instance().removeMapLayer(_lid)
+                            self._campaign_layer_id = None
+                    except Exception:
+                        pass
+                    self._campaign_idx += 1
+                    self._schedule_next_campaign_day()
+                    return
 
                 self.simulation_done.emit(all_ok, None)
                 self._set_buttons_enabled(True)
@@ -2331,7 +3312,7 @@ class LayerMappingPanel(QWidget):
             error, msg, _, _ = QgsVectorFileWriter.writeAsVectorFormatV3(
                 lyr, gpkg_path, QgsCoordinateTransformContext(), options)
             if error != QgsVectorFileWriter.NoError:
-                self._log_run(f"? Salvataggio '{lyr.name()}' fallito: {msg}", 'orange')
+                self._log_run(f"⚠ Salvataggio '{lyr.name()}' fallito: {msg}", 'orange')
                 return lyr
 
             # Clona renderer per preservare lo stile
@@ -2345,15 +3326,15 @@ class LayerMappingPanel(QWidget):
             new_lyr = QgsVectorLayer(
                 f"{gpkg_path}|layername={safe_name}", layer_name, "ogr")
             if not new_lyr.isValid():
-                self._log_run(f"? GeoPackage scritto ma non ricaricato: {gpkg_path}", 'orange')
+                self._log_run(f"⚠ GeoPackage scritto ma non ricaricato: {gpkg_path}", 'orange')
                 return lyr
             if renderer_clone:
                 new_lyr.setRenderer(renderer_clone)
             QgsProject.instance().addMapLayer(new_lyr)
-            self._log_run(f"? Salvato: {gpkg_path}", 'green')
+            self._log_run(f"💾 Salvato: {gpkg_path}", 'green')
             return new_lyr
         except Exception as exc:
-            self._log_run(f"? Errore salvataggio layer: {exc}", 'orange')
+            self._log_run(f"⚠ Errore salvataggio layer: {exc}", 'orange')
             return lyr
 
     def _on_layer_verified(self, layer):
@@ -2462,7 +3443,7 @@ class LayerMappingPanel(QWidget):
                 prev = combo.currentData()
                 combo.blockSignals(True)
                 combo.clear()
-                combo.addItem("-- nessuno --", None)
+                combo.addItem(tr("mapping.none_item"), None)
                 for l in layers:
                     combo.addItem(l.name(), l.id())
                 combo.blockSignals(False)
@@ -2484,20 +3465,20 @@ class LayerMappingPanel(QWidget):
 
     def _on_viz_nodes_lyr_changed(self):
         _node_candidates = [
-            ('pressure_bar', 'Pressione'), ('volumetric_flow_sm3s', 'Consumo sm3/s'),
-            ('energy_flow_mw', 'Consumo MW'), ('temperature_k', 'Temp.'),
-            ('sp_gravity', 'Sp.gravity'), ('z_factor', 'Z-factor'),
-            ('hhv_mj_sm3', 'HHV'), ('wobbe_mj_sm3', 'Wobbe'),
-            ('density_kg_m3', 'Densità'), ('std_density_kg_sm3', 'Dens.std'),
-            ('molar_mass', 'MM'), ('h2_pct', 'H₂ (%)'),
-            ('throughput_sm3h', 'Throughput')]
+            ('pressure_bar', tr("mapping.fs_pressure")), ('volumetric_flow_sm3s', tr("mapping.fs_vol_flow")),
+            ('energy_flow_mw', tr("mapping.fs_energy_flow")), ('temperature_k', tr("mapping.fs_temp")),
+            ('sp_gravity', tr("mapping.fs_sp_gravity")), ('z_factor', tr("mapping.f_z_factor")),
+            ('hhv_mj_sm3', tr("mapping.fs_hhv")), ('wobbe_mj_sm3', tr("mapping.fs_wobbe")),
+            ('density_kg_m3', tr("mapping.fs_density")), ('std_density_kg_sm3', tr("mapping.fs_std_density")),
+            ('molar_mass', tr("mapping.fs_mm")), ('h2_pct', tr("mapping.f_h2_pct")),
+            ('throughput_sm3h', tr("mapping.fs_throughput"))]
         self._fill_viz_field_combo(
             self.cb_viz_nodes_field, self.cb_viz_nodes_lyr, _node_candidates)
         # Combo dimensione: stesse opzioni + "-- nessuno --" in testa
         prev_size = self.cb_viz_nodes_size.currentData()
         self.cb_viz_nodes_size.blockSignals(True)
         self.cb_viz_nodes_size.clear()
-        self.cb_viz_nodes_size.addItem('-- nessuno --', None)
+        self.cb_viz_nodes_size.addItem(tr("mapping.none_item"), None)
         lyr_id = self.cb_viz_nodes_lyr.currentData()
         if lyr_id:
             try:
@@ -2520,10 +3501,10 @@ class LayerMappingPanel(QWidget):
     def _on_viz_pipes_lyr_changed(self):
         self._fill_viz_field_combo(
             self.cb_viz_pipes_field, self.cb_viz_pipes_lyr,
-            [('flow_abs_sm3h', '|Portata| Smc/h'), ('flow_sm3h', 'Portata Smc/h'),
-             ('velocity_m_s', 'Velocit\u00e0'), ('avg_pressure_bar', 'Press.media'),
-             ('sp_gravity', 'Sp.gravity'), ('z_factor', 'Z-factor'),
-             ('density_kg_m3', 'Densit\u00e0')])
+            [('flow_abs_sm3h', tr("mapping.fps_flow_abs")), ('flow_sm3h', tr("mapping.fps_flow_signed")),
+             ('velocity_m_s', tr("mapping.fps_velocity")), ('avg_pressure_bar', tr("mapping.fps_avg_pressure")),
+             ('sp_gravity', tr("mapping.fs_sp_gravity")), ('z_factor', tr("mapping.f_z_factor")),
+             ('density_kg_m3', tr("mapping.fps_density"))])
 
     def _fill_viz_field_combo(self, field_combo, lyr_combo, candidates):
         """Popola field_combo con i campi risultato noti del layer.
@@ -2594,8 +3575,8 @@ class LayerMappingPanel(QWidget):
         from PyQt5.QtWidgets import QFileDialog, QMessageBox
         lyr_id = self.cb_viz_export_lyr.currentData()
         if not lyr_id:
-            QMessageBox.warning(self, "Nessun layer",
-                                "Seleziona un layer da esportare.")
+            QMessageBox.warning(self, tr("mapping.export_no_layer_title"),
+                                tr("mapping.export_no_layer_msg"))
             return
         try:
             from qgis.core import QgsProject
@@ -2603,12 +3584,12 @@ class LayerMappingPanel(QWidget):
         except Exception:
             lyr = None
         if lyr is None:
-            QMessageBox.warning(self, "Layer non trovato",
-                                "Il layer non \u00e8 pi\u00f9 disponibile.")
+            QMessageBox.warning(self, tr("mapping.export_layer_not_found_title"),
+                                tr("mapping.export_layer_not_found_msg"))
             return
         default_name = (lyr.name().replace('R-N-', '').replace('R-P-orig-', '').replace('R-P-', '')).replace(' ', '_') + '.csv'
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Esporta CSV", default_name, "CSV (*.csv)")
+            self, tr("mapping.export_csv_dialog_title"), default_name, "CSV (*.csv)")
         if not filepath:
             return
         decimals = self.spin_viz_decimals.value()
@@ -2616,7 +3597,7 @@ class LayerMappingPanel(QWidget):
             from ..gis_integration.result_visualizer import export_layer_to_csv
             export_layer_to_csv(lyr, filepath, decimals)
             QMessageBox.information(
-                self, "Esportazione completata",
-                f"Layer esportato con {decimals} decimali:\n{filepath}")
+                self, tr("mapping.export_done_title"),
+                tr("mapping.export_done_msg", decimals=decimals, filepath=filepath))
         except Exception as e:
-            QMessageBox.critical(self, "Errore esportazione", str(e))
+            QMessageBox.critical(self, tr("mapping.export_error_title"), str(e))

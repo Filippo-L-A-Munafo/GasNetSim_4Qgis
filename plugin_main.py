@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os.path
-from PyQt5.QtCore import QSettings, QTranslator, QCoreApplication
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction
 
@@ -34,13 +33,24 @@ class GasNetSim4QgisPlugin:
         return action
 
     def initGui(self):
+        from .ui.i18n import tr, register
+        register({
+            "plugin.status_tip": {
+                "it": "Apri il Simulatore Idraulico Reti Gas",
+                "en": "Open the Gas Network Hydraulic Simulator",
+            },
+            "plugin.whats_this": {
+                "it": "GasNetSim 4Qgis — Simulatore idraulico per reti gas in QGIS",
+                "en": "GasNetSim 4Qgis — Gas network hydraulic simulator for QGIS",
+            },
+        })
         icon_path = os.path.join(self.plugin_dir, 'icon.svg')
         self.add_action(
             icon_path,
             text='GasNetSim 4Qgis',
             callback=self.run,
-            status_tip='Apri il Simulatore Idraulico Reti Gas',
-            whats_this='GasNetSim 4Qgis — Simulatore idraulico per reti gas in QGIS',
+            status_tip=tr("plugin.status_tip"),
+            whats_this=tr("plugin.whats_this"),
             parent=self.iface.mainWindow()
         )
 

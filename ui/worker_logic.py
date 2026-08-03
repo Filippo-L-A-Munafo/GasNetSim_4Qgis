@@ -190,6 +190,44 @@ def run_simulation(params: dict, log_func):
         network = gns.create_network_from_folder(folder, base_composition=comp)
         log(f"Rete: {len(network.nodes)} nodi, {len(network.pipelines)} condotte", '')
 
+        # --- Seed warm start (soluzione conversa di una run precedente) ------
+        # Il compressore lavora a regimi molto simili da un'ora all'altra: una
+        # soluzione gia' conversa sulla STESSA rete (altra ora/scenario) e' un
+        # punto di partenza quasi perfetto. Caricata come warm start, il solve
+        # diretto converge in pochi giri — niente rampa, niente oscillazioni.
+        # Il file e' un results_nodes.csv (colonne node_id;pressure_bar), per
+        # default condiviso da tutta la campagna nella cartella "nonna" (radice
+        # comune a tutte le ore); si puo' forzare un percorso con
+        # params['seed_csv']. La scrittura avviene solo dopo una convergenza
+        # (vedi piu' sotto), cosi il seed migliora di corsa in corsa.
+        _seed_out_path = folder.parent.parent / '_warmstart_seed.csv'
+        _seed_pressures = {}
+        # SICUREZZA: nel batch NON si legge il seed automatico condiviso. Le 24
+        # ore hanno regimi molto diversi (notte vs punta): un seed preso da
+        # un'ora starved (es. serale con pressioni a 16 bar) avvelenerebbe le ore
+        # facili, che partirebbero da pressioni assurde e non riuscirebbero a
+        # risalire. Nel batch ogni ora usa il warm-start della propria baseline.
+        # Un seed esplicito (params['seed_csv']) resta consentito (lo chiede
+        # l'utente apposta).
+        _seed_allowed = bool(params.get('seed_csv')) or not params.get('is_batch')
+        try:
+            _seed_path = Path(params['seed_csv']) if params.get('seed_csv') else _seed_out_path
+            if _seed_allowed and _seed_path and _seed_path.exists():
+                _df_seed = pd.read_csv(str(_seed_path), sep=';', dtype=str)
+                for _, _r in _df_seed.iterrows():
+                    try:
+                        _nid = int(_r['node_id'])
+                        _pb = float(_r['pressure_bar'])
+                    except (TypeError, ValueError, KeyError):
+                        continue
+                    if _pb > 0:
+                        _seed_pressures[_nid] = _pb * 1e5   # bar -> Pa
+                if _seed_pressures:
+                    log(f"Seed warm start: {len(_seed_pressures)} pressioni da "
+                        f"'{_seed_path.name}' (soluzione conversa precedente).", 'green')
+        except Exception:
+            _seed_pressures = {}
+
         # --- Warm start dalla baseline -----------------------------------
         # Se abbiamo le pressioni della baseline (rete senza compressore), le
         # scriviamo sui nodi della rete aumentata come punto di partenza.
@@ -198,7 +236,7 @@ def run_simulation(params: dict, log_func):
         # del nodo di aspirazione da cui e' stato splittato — entrambi vicini
         # alla soluzione, cosi Newton non riparte da freddo.
         _use_warm_start = False
-        if _baseline_pressures:
+        if _baseline_pressures or _seed_pressures:
             _ref = set(getattr(network, 'reference_nodes', []) or [])
             # Pressione di ripiego per i nodi non presenti in baseline (es. la
             # mandata del compressore, nodo nuovo creato dallo split): la
@@ -210,10 +248,18 @@ def run_simulation(params: dict, log_func):
                 _p_fallback = 7.0e6
 
             _set = 0
+            _from_seed = 0
             for nid, node in network.nodes.items():
                 if nid in _ref:
                     continue  # i reference hanno pressione imposta
-                if nid in _baseline_pressures:
+                # Il seed (soluzione conversa completa, compreso il nodo di
+                # mandata del compressore) ha priorita' sulla baseline: e' piu'
+                # vicino al punto di lavoro finale.
+                if nid in _seed_pressures:
+                    node.pressure = _seed_pressures[nid]
+                    _set += 1
+                    _from_seed += 1
+                elif _baseline_pressures and nid in _baseline_pressures:
                     node.pressure = _baseline_pressures[nid]
                     _set += 1
 
@@ -234,7 +280,13 @@ def run_simulation(params: dict, log_func):
                 for n in network.nodes.values()
             ):
                 _use_warm_start = True
-                log(f"Warm start: {_set} pressioni dalla baseline"
+                if _from_seed:
+                    _src = (f"{_from_seed} dal seed"
+                            + (f" + {_set - _from_seed} dalla baseline"
+                               if _set - _from_seed else ""))
+                else:
+                    _src = f"{_set} pressioni dalla baseline"
+                log(f"Warm start: {_src}"
                     + (f" + {_filled} di ripiego" if _filled else "")
                     + " (Newton parte vicino alla soluzione).", 'green')
 
@@ -399,8 +451,9 @@ def run_simulation(params: dict, log_func):
                     ratio0 = {cid: float(getattr(c, 'compression_ratio', 1.0))
                               for cid, c in comps.items()}
 
-                    log(f"\n🔧 Rampa sui compressori ({n_passi} passi) — "
-                        f"parto da rapporto 1.00 (compressore trasparente)...",
+                    log(f"\n🔧 Rampa ADATTIVA sui compressori "
+                        f"(passo iniziale 1/{n_passi}, bisezione sui punti duri) "
+                        f"— parto da rapporto 1.00 (compressore trasparente)...",
                         'orange')
 
                     # Si rampa il RAPPORTO, non la pressione di mandata.
@@ -420,23 +473,49 @@ def run_simulation(params: dict, log_func):
                     for cid, c in comps.items():
                         c.control_mode = 'ratio'
 
-                    for k in range(n_passi):
-                        fr = (k + 1) / n_passi
+                    # Rampa ADATTIVA: invece di n_passi fissi che si arrendono
+                    # al primo livello che non converge, il passo si DIMEZZA
+                    # (bisezione) su quel livello e riprende dall'ultimo stato
+                    # buono. Cosi' la continuazione striscia oltre i punti duri
+                    # (es. rapporto ~1.02 ad alto boost del compressore) invece
+                    # di fermarsi. Dopo un passo liscio il passo si ri-allarga.
+                    def _snap_p():
+                        return {nid: n.pressure for nid, n in network.nodes.items()}
+
+                    def _restore_p(snap):
+                        for _nid, _p in snap.items():
+                            network.nodes[_nid].pressure = _p
+
+                    fr = 0.0                       # frazione raggiunta (0=trasparente, 1=nominale)
+                    step = 1.0 / n_passi           # passo iniziale
+                    _MIN_STEP = step / 16.0        # passo minimo prima di arrendersi
+                    good_snap = _snap_p()          # ultimo stato convergente
+                    while fr < 1.0 - 1e-9:
+                        trial = min(fr + step, 1.0)
                         for cid, c in comps.items():
                             r_nom = ratio0.get(cid, 1.0)
-                            c.compression_ratio = 1.0 + (r_nom - 1.0) * fr
+                            c.compression_ratio = 1.0 + (r_nom - 1.0) * trial
                         try:
                             result = _run_sim(network, int(params['max_iter']),
                                               tol, urf)
-                            log(f"   → rapporto {c.compression_ratio:.4f} "
-                                f"({fr*100:.0f}%) ✓", 'green')
+                            fr = trial
+                            good_snap = _snap_p()
+                            log(f"   → {fr*100:.0f}%  (rapporto "
+                                f"{c.compression_ratio:.4f}) ✓", 'green')
+                            # un passo andato liscio: ri-allarga (ma non oltre l'iniziale)
+                            step = min(step * 1.5, 1.0 / n_passi)
                         except RuntimeError as exc3:
                             if 'not converged' not in str(exc3).lower():
                                 raise
-                            log(f"   → rapporto {c.compression_ratio:.4f} "
-                                f"({fr*100:.0f}%) ✗", 'orange')
-                            ok_rampa = False
-                            break
+                            _restore_p(good_snap)   # torna all'ultimo stato buono
+                            step *= 0.5             # biseziona
+                            log(f"   → {trial*100:.0f}% ✗ — dimezzo il passo "
+                                f"(ora {step*100:.2f}%)", 'orange')
+                            if step < _MIN_STEP:
+                                log("   → passo minimo raggiunto: rampa "
+                                    "interrotta.", 'orange')
+                                ok_rampa = False
+                                break
 
                     # Passo finale: controllo di pressione sul target nominale,
                     # partendo dalla soluzione a rapporto nominale.
@@ -668,11 +747,70 @@ def run_simulation(params: dict, log_func):
                     except Exception:
                         row['throughput_sm3h'] = ''
                     rows_n.append(row)
-                out_folder = folder.parent / 'output'
+                # --- Cartella di output organizzata: <root>/h<NN>_<ESITO> -----
+                # Stessa struttura per singola, batch e campagna. <root> e' la
+                # cartella "madre" (il run_XXX per singola/batch, o il giorno
+                # per la campagna). L'esito (OK/NONCONV) e' nel NOME.
+                _esito = 'OK' if converged else 'NONCONV'
+                _root = folder.parent
+                _ora = params.get('ora')
+                try:
+                    _ora_i = int(_ora) if _ora is not None else None
+                except (TypeError, ValueError):
+                    _ora_i = None
+                if _ora_i is not None:
+                    out_folder = _root / f"h{_ora_i:02d}_{_esito}"
+                    _other = _root / f"h{_ora_i:02d}_{'NONCONV' if converged else 'OK'}"
+                else:
+                    out_folder = _root / f"run_{_esito}"
+                    _other = _root / f"run_{'NONCONV' if converged else 'OK'}"
+                # Rimuovi la cartella dell'esito OPPOSTO per la stessa ora (una
+                # run precedente convergeva e ora no, o viceversa): niente doppioni.
+                try:
+                    import shutil
+                    if _other.exists():
+                        shutil.rmtree(str(_other), ignore_errors=True)
+                except Exception:
+                    pass
                 out_folder.mkdir(parents=True, exist_ok=True)
                 if rows_n:
                     pd.DataFrame(rows_n).to_csv(
                         str(out_folder / 'results_nodes.csv'), index=False, sep=';')
+
+                    # Salva questa soluzione come seed condiviso per le prossime
+                    # ore/scenari. Solo se conversa e SOLO fuori dal batch: in
+                    # parallelo 24 processi scriverebbero lo stesso file in corsa.
+                    # Flusso previsto: un'ora "di riferimento" singola crea il
+                    # seed, poi il batch lo riusa (piu' veloce, niente rampa).
+                    if converged and not params.get('is_batch', False):
+                        try:
+                            _seed_rows = [
+                                r for r in rows_n
+                                if r.get('pressure_bar') not in ('', None)
+                            ]
+                            # SALVAGUARDIA: non salvare un seed da una soluzione
+                            # STARVED (qualche nodo a pressione bassa). Un seed
+                            # con pressioni a 16 bar, riusato su ore facili, le
+                            # avvelena. Si scrive solo se la soluzione e' "sana"
+                            # (minimo sopra ~25 bar).
+                            _pmin = min((float(r['pressure_bar']) for r in _seed_rows),
+                                        default=0.0)
+                            if _seed_rows and _pmin < 25.0:
+                                log(f"Seed NON salvato: soluzione starved "
+                                    f"(min {_pmin:.1f} bar < 25). Eviterebbe di "
+                                    f"avvelenare le ore facili.", 'orange')
+                                _seed_rows = []
+                            if _seed_rows:
+                                pd.DataFrame(
+                                    [{'node_id': r['node_id'],
+                                      'pressure_bar': r['pressure_bar']}
+                                     for r in _seed_rows]
+                                ).to_csv(str(_seed_out_path), index=False, sep=';')
+                                log(f"Seed warm start aggiornato "
+                                    f"({len(_seed_rows)} pressioni) → "
+                                    f"'{_seed_out_path.name}'.", '')
+                        except Exception:
+                            pass
 
                 rows_p = []
                 for pid, pipe in result.pipelines.items():
@@ -722,6 +860,86 @@ def run_simulation(params: dict, log_func):
                 if rows_p:
                     pd.DataFrame(rows_p).to_csv(
                         str(out_folder / 'results_pipes.csv'), index=False, sep=';')
+
+                # --- Potenza reale dei compressori --------------------------
+                # A convergenza calcoliamo la potenza isentropica assorbita da
+                # ogni stazione con i VALORI FINALI (non quelli congelati in
+                # __init__, che sono stantii durante il solve aumentato):
+                #   T inlet, cp/cv dalla miscela d'ingresso, rapporto = p_out/p_in
+                #   e portata massica dalla portata volumetrica conversa.
+                # Formula isentropica (compressor.calculate_power, MW):
+                #   P = cp·T·(r^((n-1)/n) − 1)·ṁ / η / 1e6
+                _comps = getattr(result, 'compressors', None) or {}
+                if _comps:
+                    _dt_h = float(params.get('time_step_s', 3600.0)) / 3600.0
+                    rows_c = []
+                    _tot_mw = 0.0
+                    for cid, comp_obj in _comps.items():
+                        row = {'compressor_index': cid}
+                        try:
+                            _in = comp_obj.inlet
+                            _out = comp_obj.outlet
+                            row['inlet_node'] = getattr(_in, 'index', '')
+                            row['outlet_node'] = getattr(_out, 'index', '')
+                            p_in = getattr(_in, 'pressure', None)
+                            p_out = getattr(_out, 'pressure', None)
+                            row['inlet_pressure_bar'] = (
+                                round(float(p_in) / 1e5, 4) if p_in else '')
+                            row['outlet_pressure_bar'] = (
+                                round(float(p_out) / 1e5, 4) if p_out else '')
+                            # Rapporto di compressione EFFETTIVO a convergenza.
+                            ratio = (float(p_out) / float(p_in)
+                                     if p_in and p_out and float(p_in) > 0 else 1.0)
+                            row['compression_ratio'] = round(ratio, 5)
+
+                            # Portata volumetrica conversa (Sm³/s) → massica.
+                            q = comp_obj.flow_rate
+                            if q is None:
+                                q = comp_obj.calc_flow_rate()
+                            q = float(q) if q is not None else 0.0
+                            gm_c = getattr(comp_obj, 'gas_mixture', None) or getattr(
+                                _in, 'gas_mixture', None)
+                            std_rho = getattr(gm_c, 'standard_density', 0.8) or 0.8
+                            row['flow_sm3h'] = round(q * 3600.0, 2)
+                            row['mass_flow_kg_s'] = round(q * float(std_rho), 4)
+
+                            # Aggiorna i parametri stantii con lo stato finale
+                            # PRIMA di chiamare calculate_power().
+                            comp_obj.T1 = getattr(_in, 'temperature', comp_obj.T1)
+                            _cp = getattr(gm_c, 'cp', None)
+                            _cv = getattr(gm_c, 'cv', None)
+                            if _cp:
+                                comp_obj.cp = float(_cp)
+                            if _cv:
+                                comp_obj.cv = float(_cv)
+                            # Isentropico: n=cp/cv. Isotermo (n==1): invariato.
+                            if abs(float(getattr(comp_obj, 'n', 1.3)) - 1.0) > 1e-9 \
+                                    and comp_obj.cv:
+                                comp_obj.n = comp_obj.cp / comp_obj.cv
+                            comp_obj.compression_ratio = ratio
+                            comp_obj.flow_rate = q
+                            comp_obj.mass_flow_rate = q * float(std_rho)
+
+                            raw_mw = float(comp_obj.calculate_power() or 0.0)
+                            # Un compressore assorbe potenza ≥ 0; con ratio ≤ 1
+                            # (stazione trasparente/riduttrice) il lavoro di
+                            # compressione e' nullo.
+                            power_mw = max(raw_mw, 0.0) if ratio > 1.0 else 0.0
+                            row['power_MW'] = round(power_mw, 4)
+                            row['energy_MWh'] = round(power_mw * _dt_h, 4)
+                            _tot_mw += power_mw
+                        except Exception:
+                            for _k in ('power_MW', 'energy_MWh'):
+                                row.setdefault(_k, '')
+                        rows_c.append(row)
+                    if rows_c:
+                        pd.DataFrame(rows_c).to_csv(
+                            str(out_folder / 'results_compressors.csv'),
+                            index=False, sep=';')
+                        log(f"Potenza compressori: {len(rows_c)} stazione/i, "
+                            f"totale {_tot_mw:.3f} MW "
+                            f"(energia {_tot_mw * _dt_h:.3f} MWh nell'ora simulata).",
+                            'green')
 
                 log(f"CSV risultati salvati in {out_folder}", 'green' if converged else 'orange')
             except Exception:

@@ -148,7 +148,12 @@ def build_graph(layer):
         a = get_node(coords[0])
         b = get_node(coords[-1])
         attrs = dict(zip([f.name() for f in layer.fields()], feat.attributes()))
-        archi.append({'id': feat.id(), 'a': a, 'b': b, 'coords': coords, 'attrs': attrs})
+        # src_fids: i fid ORIGINALI del layer condotte che compongono questo
+        # arco. All'inizio uno solo; il collasso grado-2 li accumula quando
+        # fonde una catena. Serve a ritrovare, DOPO il collasso, quali condotte
+        # originali modificare (es. per allargare un diametro).
+        archi.append({'id': feat.id(), 'a': a, 'b': b, 'coords': coords,
+                      'attrs': attrs, 'src_fids': [feat.id()]})
 
     return archi, nodo_xy, skipped_null
 
@@ -310,6 +315,9 @@ def collapse_undirected(archi, protected=None):
                 'a': a_end, 'b': b_end,
                 'coords': c1 + c2[1:],
                 'attrs': e1['attrs'].copy(),
+                # accumula i fid originali dei due archi fusi
+                'src_fids': list(e1.get('src_fids', [e1['id']]))
+                            + list(e2.get('src_fids', [e2['id']])),
             })
             edges_to_remove.add(i1)
             edges_to_remove.add(i2)
@@ -1123,6 +1131,7 @@ def make_memory_layers(archi, nodo_xy, matched=None,
         QgsField("node_b",     QVariant.Int),
         QgsField("length_m",   QVariant.Double),
         QgsField("diameter_m", QVariant.Double),
+        QgsField("src_fids",   QVariant.String),
     ])
     pipes_lyr.updateFields()
 
@@ -1142,10 +1151,12 @@ def make_memory_layers(archi, nodo_xy, matched=None,
                 diam_m = _rd
         except (TypeError, ValueError):
             diam_m = None
+        _src = ','.join(str(x) for x in e.get('src_fids', [e['id']]))
         f = QgsFeature()
         f.setGeometry(geom)
         f.setAttributes([i, e['a'], e['b'], round(real_len, 2),
-                          round(diam_m, 6) if diam_m is not None else None])
+                          round(diam_m, 6) if diam_m is not None else None,
+                          _src])
         pipe_feats.append(f)
     pp.addFeatures(pipe_feats)
 
@@ -1509,35 +1520,20 @@ def inject_compressors_into_csvs(nodes_csv_path, pipes_csv_path,
         dup['flow_sm3_per_s'] = str(PLACEHOLDER_FLOW)
         dup['flow_MW']        = ''
         
-        if control_mode == "pressure":
-            # Il nodo di uscita e' una GIUNZIONE NORMALE, anche in PCM.
-            #
-            # In precedenza veniva scritto come 'reference' a pressione fissa
-            # ("stabilizza gli anelli"). Su un compressore di INGRESSO rete
-            # funziona, perche' li' la reference e' davvero la fonte. Su uno
-            # SNODO DI TRANSITO no: un reference ha portata libera, quindi
-            # diventa una sorgente illimitata in mezzo alla rete. Il gas che
-            # arriva da monte non prosegue piu' a valle — a valle ne entra
-            # altro, dal nulla — e i due tronconi si scollegano. Su run_227
-            # questo produceva 135.2 Sm3/s di sbilanciamento, il 26% del
-            # transito del nodo 28 (1.9 milioni di Sm3/h).
-            #
-            # Con la formulazione aumentata (PressureProblem._augment) la
-            # pressione di mandata e' imposta da una RIGA DI VINCOLO
-            #     p_out - p_out_target = 0
-            # e la portata del compressore e' un'incognita del sistema: la
-            # massa attraversa davvero la stazione. Se il nodo restasse
-            # reference la sua pressione uscirebbe dalle incognite e quella
-            # riga di vincolo sarebbe identicamente nulla -> matrice singolare.
-            #
-            # p_out_target resta in sf_compressors.csv: e' li' che il vincolo
-            # va a leggerlo.
-            dup['node_type']   = ''
-            dup['pressure_pa'] = ''
-        else:
-            dup['node_type']   = ''
-            dup['pressure_pa'] = ''
-            
+        # Il nodo di uscita del compressore e' SEMPRE una giunzione normale
+        # (node_type vuoto, nessuna pressione imposta), sia in controllo di
+        # pressione (PCM) sia in controllo di rapporto.
+        #
+        # In PCM la pressione di mandata NON viene imposta rendendo il nodo un
+        # 'reference' (che avrebbe portata libera e agirebbe da sorgente
+        # illimitata in mezzo alla rete, scollegando i tronconi a monte e a
+        # valle): e' imposta da una riga di vincolo  p_out - p_out_target = 0
+        # nella formulazione aumentata (PressureProblem._augment), con la
+        # portata del compressore come incognita del sistema. p_out_target
+        # resta in sf_compressors.csv: e' li' che il vincolo va a leggerlo.
+        dup['node_type']   = ''
+        dup['pressure_pa'] = ''
+
         nodes_rows.append(dup)
         nodes_by_id[new_nid] = dup
 
@@ -1570,7 +1566,8 @@ def inject_compressors_into_csvs(nodes_csv_path, pipes_csv_path,
         
         if control_mode == "pressure":
             log(f"  ✓ Compressore {comp_rows[-1]['compressor_index']}: nodo {nid} "
-                f"→ PCM mode, OUT nodo {new_nid} (Reference a {spec['p_out_bar']:.2f} bar)")
+                f"→ controllo di pressione, OUT nodo {new_nid} "
+                f"(giunzione, p_out target {spec['p_out_bar']:.2f} bar)")
         elif spec.get('p_out_bar') is not None:
             log(f"  ✓ Compressore {comp_rows[-1]['compressor_index']}: nodo {nid} "
                 f"→ split in {nid} (IN, {len(in_set)} pipe) e {new_nid} "
@@ -1860,7 +1857,7 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
     if nodes_layer is not None:
         log(f"Step 2b: Split ai nodi utente (raggio {radius_m} m)...")
         work_lyr, n_splits = split_network_at_user_nodes(
-            work_lyr, nodes_layer, radius_m)
+            work_lyr, nodes_layer, radius_m, crs=pipe_layer.crs().authid())
         QCoreApplication.processEvents()
         log(f"  → {n_splits} split, {work_lyr.featureCount()} segmenti totali")
 
@@ -1881,7 +1878,7 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
     matched = {}
     protected = set()
     if nodes_layer is not None:
-        matched = match_user_nodes(nodo_xy, nodes_layer, radius_m=radius_m)
+        matched = match_user_nodes(nodo_xy, nodes_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
         protected = set(matched.keys())
         log(f"  Nodi agganciati: {len(matched)}/{nodes_layer.featureCount()}")
         # Controlla nodi non connessi
@@ -1972,8 +1969,40 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
     pipes_lyr, nodes_lyr = make_memory_layers(
         archi, nodo_xy, reference,
         diam_field=diam_field, diam_unit=diam_unit,
+        crs=pipe_layer.crs().authid(),
         fid_map=matched)
     log(f"  Pipe: {pipes_lyr.featureCount()}, Nodi: {nodes_lyr.featureCount()}")
+
+    # Step 5b: Mappa collasso → fid originali. Ogni condotta collassata
+    # (pipeline_index) elenca i fid delle condotte ORIGINALI che la compongono,
+    # con diametro e lunghezza: cosi, individuato un collo di bottiglia sul
+    # modello collassato, si sa esattamente quali condotte modificare nel layer
+    # di partenza.
+    try:
+        import csv as _csv
+        from pathlib import Path as _P
+        _P(out_dir).mkdir(parents=True, exist_ok=True)   # la cartella potrebbe non esistere ancora
+        _map = _P(out_dir) / 'collapse_map.csv'
+        with open(str(_map), 'w', newline='', encoding='utf-8') as _fh:
+            _w = _csv.writer(_fh, delimiter=';')
+            _w.writerow(['pipeline_index', 'node_a', 'node_b',
+                         'diameter_m', 'length_m', 'n_orig', 'src_fids'])
+            for _i, _e in enumerate(archi, 1):
+                _rd = _e['attrs'].get(diam_field, None)
+                try:
+                    _rd = float(_rd)
+                    _dm = _rd * 0.0254 if diam_unit == 'in' else (
+                        _rd * 0.01 if diam_unit == 'cm' else _rd)
+                except (TypeError, ValueError):
+                    _dm = ''
+                _src = _e.get('src_fids', [_e['id']])
+                _w.writerow([_i, _e['a'], _e['b'],
+                             round(_dm, 6) if _dm != '' else '',
+                             round(path_length_3d(_e['coords']), 2),
+                             len(_src), ','.join(str(x) for x in _src)])
+        log(f"  Mappa collasso→fid originali: {_map.name}")
+    except Exception as _exc:
+        log(f"  (mappa collasso non scritta: {_exc})")
 
     # Step 6: Export CSV
     log(f"Step 6: Export CSV (ora={ora})...")
@@ -1984,7 +2013,7 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
         lf = loads_field
         load_fields = [f.name() for f in loads_layer.fields()]
         if lf in load_fields:
-            matched_loads = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m)
+            matched_loads = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
             demands_dict = {}
             for nid, feat in matched_loads.items():
                 attrs_l = dict(zip(load_fields, feat.attributes()))
@@ -2022,7 +2051,7 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
         from PyQt5.QtCore import QVariant
         user_fields = [f.name() for f in loads_layer.fields()]
         if 'gas_comp' in user_fields:
-            matched_gc = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m)
+            matched_gc = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
             gc_dict = {}
             for nid, feat in matched_gc.items():
                 attrs_gc = dict(zip(user_fields, feat.attributes()))
@@ -2166,7 +2195,7 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
     if nodes_layer is not None:
         log(f"Step 2b: Split ai nodi utente (raggio {radius_m} m)...")
         work_lyr, n_splits = split_network_at_user_nodes(
-            work_lyr, nodes_layer, radius_m)
+            work_lyr, nodes_layer, radius_m, crs=pipe_layer.crs().authid())
         QCoreApplication.processEvents()
         log(f"  -> {n_splits} split, {work_lyr.featureCount()} segmenti totali")
 
@@ -2185,7 +2214,7 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
     # Step 4: Aggancio nodi reference
     matched = {}
     if nodes_layer is not None:
-        matched = match_user_nodes(nodo_xy, nodes_layer, radius_m=radius_m)
+        matched = match_user_nodes(nodo_xy, nodes_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
         log(f"  Nodi agganciati: {len(matched)}/{nodes_layer.featureCount()}")
         unmatched_labels = find_unmatched_user_nodes(nodo_xy, nodes_layer, radius_m=radius_m)
         if unmatched_labels:
@@ -2246,10 +2275,42 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
     pipes_lyr, nodes_lyr = make_memory_layers(
         archi, nodo_xy, reference,
         diam_field=diam_field, diam_unit=diam_unit,
+        crs=pipe_layer.crs().authid(),
         fid_map=matched)
     pipes_lyr.setName("RNT_Pipe_Complete")
     nodes_lyr.setName("RNT_Nodi_Complete")
     log(f"  Pipe: {pipes_lyr.featureCount()}, Nodi: {nodes_lyr.featureCount()}")
+
+    # Step 5b: Mappa collasso → fid originali. Ogni condotta collassata
+    # (pipeline_index) elenca i fid delle condotte ORIGINALI che la compongono,
+    # con diametro e lunghezza: cosi, individuato un collo di bottiglia sul
+    # modello collassato, si sa esattamente quali condotte modificare nel layer
+    # di partenza.
+    try:
+        import csv as _csv
+        from pathlib import Path as _P
+        _P(out_dir).mkdir(parents=True, exist_ok=True)   # la cartella potrebbe non esistere ancora
+        _map = _P(out_dir) / 'collapse_map.csv'
+        with open(str(_map), 'w', newline='', encoding='utf-8') as _fh:
+            _w = _csv.writer(_fh, delimiter=';')
+            _w.writerow(['pipeline_index', 'node_a', 'node_b',
+                         'diameter_m', 'length_m', 'n_orig', 'src_fids'])
+            for _i, _e in enumerate(archi, 1):
+                _rd = _e['attrs'].get(diam_field, None)
+                try:
+                    _rd = float(_rd)
+                    _dm = _rd * 0.0254 if diam_unit == 'in' else (
+                        _rd * 0.01 if diam_unit == 'cm' else _rd)
+                except (TypeError, ValueError):
+                    _dm = ''
+                _src = _e.get('src_fids', [_e['id']])
+                _w.writerow([_i, _e['a'], _e['b'],
+                             round(_dm, 6) if _dm != '' else '',
+                             round(path_length_3d(_e['coords']), 2),
+                             len(_src), ','.join(str(x) for x in _src)])
+        log(f"  Mappa collasso→fid originali: {_map.name}")
+    except Exception as _exc:
+        log(f"  (mappa collasso non scritta: {_exc})")
 
     # Step 6: Export CSV
     log(f"Step 6: Export CSV (ora={ora})...")
@@ -2259,7 +2320,7 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
         lf = loads_field
         load_fields = [f.name() for f in loads_layer.fields()]
         if lf in load_fields:
-            matched_loads = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m)
+            matched_loads = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
             demands_dict = {}
             for nid, feat in matched_loads.items():
                 attrs_l = dict(zip(load_fields, feat.attributes()))
@@ -2296,7 +2357,7 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
         from PyQt5.QtCore import QVariant
         user_fields = [f.name() for f in loads_layer.fields()]
         if 'gas_comp' in user_fields:
-            matched_gc = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m)
+            matched_gc = match_user_nodes(nodo_xy, loads_layer, radius_m=radius_m, crs=pipe_layer.crs().authid())
             gc_dict = {}
             for nid, feat in matched_gc.items():
                 attrs_gc = dict(zip(user_fields, feat.attributes()))
