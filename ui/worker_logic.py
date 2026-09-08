@@ -368,6 +368,12 @@ def run_simulation(params: dict, log_func):
 
             _ts = time.time()
             try:
+                # Assemblaggio sparso dello Jacobiano, attivabile con
+                # GNS_SPARSE=1. Il solutore Newton converte comunque in CSC
+                # prima di spsolve; questo evita di costruire prima la matrice
+                # densa 340x340. Non cambia il risultato, solo il percorso.
+                import os as _os_sp
+                _sparse = _os_sp.environ.get('GNS_SPARSE', '0') not in ('0', '', 'false', 'False')
                 if _multi_comp:
                     _res = net.simulation(
                         max_iter=max_iter,
@@ -378,6 +384,7 @@ def run_simulation(params: dict, log_func):
                         coupling_max_iter=max_iter,
                         coupling_tol=tol * 1e-2,
                         warm_start=warm_start,
+                        sparse_matrix=_sparse,
                     )
                 else:
                     _res = net.simulation(
