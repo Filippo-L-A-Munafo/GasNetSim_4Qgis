@@ -29,3 +29,8 @@ desktop.ini
 # QGIS
 *.qgs~
 *.qgz~
+
+# Simulation outputs & backups
+**/results/
+*.bak*
+
