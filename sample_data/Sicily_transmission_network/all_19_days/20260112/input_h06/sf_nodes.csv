@@ -2,7 +2,7 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 0;;;1e-06;433.0;;;;;;volumetric
 1;;;0.51977608;460.0;;;;;;volumetric
 2;;;1e-06;452.0;;;;;;volumetric
-5;;;0.0318025;466.0;;;;;;volumetric
+5;;;0.03180250;466.0;;;;;;volumetric
 6;;;1e-06;305.0;;;;;;volumetric
 12;;;0.58012331;391.0;;;;;;volumetric
 13;;;0.00910667;277.0;;;;;;volumetric
@@ -51,9 +51,9 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 1703;;;1e-06;296.0;;;;;;volumetric
 1713;;;0.01896944;339.0;;;;;;volumetric
 1716;;;1e-06;335.0;;;;;;volumetric
-1717;;;34.60278047;142.0;;;;;;volumetric
+1717;;;27.47677242;142.0;;;;;;volumetric
 1719;;;1e-06;135.0;;;;;;volumetric
-1727;;;0.6105725;22.0;;;;;;volumetric
+1727;;;0.61057250;22.0;;;;;;volumetric
 1728;;;0.16894444;425.0;;;;;;volumetric
 1729;;;1e-06;421.0;;;;;;volumetric
 1730;;;1e-06;91.0;;;;;;volumetric
@@ -76,11 +76,11 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 1863;;;1e-06;334.0;;;;;;volumetric
 1866;;;0.31409608;335.0;;;;;;volumetric
 1867;;;1e-06;114.0;;;;;;volumetric
-1868;;;36.87049233;114.0;;;;;;volumetric
+1868;;;30.69661853;114.0;;;;;;volumetric
 1869;;;1e-06;72.0;;;;;;volumetric
 1876;;;0.37829511;120.0;;;;;;volumetric
 1877;;;1e-06;576.0;;;;;;volumetric
-1880;;;0.022014;560.0;;;;;;volumetric
+1880;;;0.02201400;560.0;;;;;;volumetric
 1881;;;1e-06;422.0;;;;;;volumetric
 1955;;;1e-06;38.0;;;;;;volumetric
 2037;;;1e-06;179.0;;;;;;volumetric
@@ -100,7 +100,7 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 2434;;;1e-06;275.0;;;;;;volumetric
 2523;;;1e-06;232.0;;;;;;volumetric
 2524;;;1e-06;585.0;;;;;;volumetric
-2552;;;0.164184;370.0;;;;;;volumetric
+2552;;;0.16418400;370.0;;;;;;volumetric
 2553;;;1e-06;644.0;;;;;;volumetric
 2557;;;0.06151228;640.0;;;;;;volumetric
 2558;;;1e-06;156.0;;;;;;volumetric
@@ -110,7 +110,7 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 2719;;;1e-06;182.0;;;;;;volumetric
 2833;;;0.18837122;452.0;;;;;;volumetric
 2835;;;1e-06;19.0;;;;;;volumetric
-2836;;;0.0281225;1280.0;;;;;;volumetric
+2836;;;0.02812250;1280.0;;;;;;volumetric
 2840;;;0.42564964;1256.0;;;;;;volumetric
 2841;;;0.28873372;291.0;;;;;;volumetric
 2842;;;1e-06;296.0;;;;;;volumetric
@@ -146,8 +146,8 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 4530;;;6.68547047;10.0;;;;;;volumetric
 4535;;;0.07565297;111.0;;;;;;volumetric
 4536;;;1e-06;15.0;;;;;;volumetric
-4537;;;13.433752;15.0;;;;;;volumetric
-4538;;;1.48729744;123.0;;;;;;volumetric
+4537;;;10.40689489;15.0;;;;;;volumetric
+4538;;;1.23505861;123.0;;;;;;volumetric
 4543;;;0.08460356;81.0;;;;;;volumetric
 4544;;;0.03024211;471.0;;;;;;volumetric
 4555;;;0.09317239;736.0;;;;;;volumetric
@@ -170,7 +170,7 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 4870;;;0.19723364;390.0;;;;;;volumetric
 4872;;;0.07565503;392.0;;;;;;volumetric
 4873;;;1e-06;163.0;;;;;;volumetric
-4887;;;1.43876608;51.0;;;;;;volumetric
+4887;;;1.11950922;51.0;;;;;;volumetric
 4895;;;0.35654328;70.0;;;;;;volumetric
 4896;;;1e-06;171.0;;;;;;volumetric
 4933;;;1e-06;194.0;;;;;;volumetric
@@ -196,7 +196,7 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 5387;;;1e-06;299.0;;;;;;volumetric
 5393;;;0.07453983;324.0;;;;;;volumetric
 5454;;;0.16929342;292.0;;;;;;volumetric
-5458;;;1.49996181;11.0;;;;;;volumetric
+5458;;;1.31646372;11.0;;;;;;volumetric
 5487;;;1e-06;51.0;;;;;;volumetric
 5524;;;1e-06;127.0;;;;;;volumetric
 5530;;;1e-06;18.0;;;;;;volumetric
@@ -270,14 +270,14 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 6454;;;1e-06;280.0;;;;;;volumetric
 6462;;;1e-06;190.0;;;;;;volumetric
 6463;;;1e-06;35.0;;;;;;volumetric
-6498;;;30.25266436;22.0;;;;;;volumetric
+6498;;;23.43787350;22.0;;;;;;volumetric
 6499;;;1e-06;306.0;;;;;;volumetric
 6502;;;1e-06;288.0;;;;;;volumetric
 6503;;;1e-06;70.0;;;;;;volumetric
 6524;;;1e-06;561.0;;;;;;volumetric
 6595;;;1e-06;538.0;;;;;;volumetric
 6663;;;1e-06;652.0;;;;;;volumetric
-6760;;;0.051723;751.0;;;;;;volumetric
+6760;;;0.05172300;751.0;;;;;;volumetric
 6785;;;1e-06;871.0;;;;;;volumetric
 6878;;;1e-06;88.0;;;;;;volumetric
 6885;;;0.01845494;257.0;;;;;;volumetric
@@ -299,11 +299,11 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 7945;;;0.06300564;990.0;;;;;;volumetric
 8049;;;0.00235775;755.0;;;;;;volumetric
 8051;;;0.00348422;62.0;;;;;;volumetric
-8055;;;1.275e-05;299.0;;;;;;volumetric
+8055;;;0.00001275;299.0;;;;;;volumetric
 8056;;;1e-06;299.0;;;;;;volumetric
 8057;;;1e-06;265.0;;;;;;volumetric
 8059;;;0.07017464;283.0;;;;;;volumetric
-8118;7500000;;;7.0;288.15;{'methane': 0.748113, 'ethane': 0.074554, 'propane': 0.010011, 'isobutane': 0.00062, 'butane': 0.000964, 'isopentane': 0.000164, 'pentane': 0.000164, 'hexane': 0.000121, 'nitrogen': 0.011483, 'carbon dioxide': 0.014393, 'helium': 0.000215, 'hydrogen': 0.1392};reference;;;volumetric
+8118;7500000;;;7.0;288.15;{'methane': 0.748128, 'ethane': 0.074551, 'propane': 0.01001, 'isobutane': 0.00062, 'butane': 0.00096, 'isopentane': 0.00016, 'pentane': 0.00016, 'hexane': 0.00012, 'nitrogen': 0.01148, 'carbon dioxide': 0.01439, 'helium': 0.00022, 'hydrogen': 0.1392};reference;;;volumetric
 8125;;;1e-06;74.0;;;;;;volumetric
 8136;;;0.01898386;87.0;;;;;;volumetric
 8160;;;1e-06;74.0;;;;;;volumetric
@@ -338,4 +338,4 @@ node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_compo
 9191;;;0.42202325;653.0;;;;;;volumetric
 9211;;;1e-06;1.0;;{'butane': 0.00478, 'carbon_dioxide': 0.00602, 'ethane': 0.05246, 'helium': 0.00078, 'hexane': 0.0006, 'isobutane': 0.00317, 'isopentane': 0.00071, 'methane': 0.86645, 'nitrogen': 0.04455, 'pentane': 0.00026, 'propane': 0.02022};;;;volumetric
 9406;;;0.01094461;507.0;;;;;;volumetric
-9415;;;0.022014;505.0;;;;;;volumetric
+9415;;;0.02201400;505.0;;;;;;volumetric

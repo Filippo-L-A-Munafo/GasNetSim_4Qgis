@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this benchmark dataset, please cite it as below."
+title: "A High-Resolution Spatial and Sectoral Natural Gas Demand Disaggregation Benchmark for the Sicilian Transmission Grid"
+version: 1.0.0
+date-released: 2026-09-08
+license: CC-BY-4.0
+repository-code: "https://github.com/Filippo-L-A-Munafo/sicily-gas-demand-disaggregation-benchmark"
+authors:
+  - family-names: "Munafò"
+    given-names: "Filippo Luca Alberto"
+    affiliation: "Department of Engineering, University of Palermo, Palermo, Italy"
+    email: "filippolucaalberto.munafo@unipa.it"
+keywords:
+  - "natural gas demand"
+  - "spatial disaggregation"
+  - "transmission network"
+  - "Sicily"
+  - "SNAM"
+  - "MASE"
+  - "TERNA"
+  - "hourly empirical CCGT dispatch"
+  - "hydrogen blending"

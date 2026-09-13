@@ -9,16 +9,18 @@ from .layer_mapping_panel import LayerMappingPanel
 from .i18n import tr, register
 from .settings_dialog import SettingsDialog
 from .info_dialog import InfoDialog
+from .guida_dialog import GuidaDialog
 
 register({
     "main.header": {
-        "it": "GasNetSim 4Qgis \u2014 Simulatore Idraulico Reti Gas",
-        "en": "GasNetSim 4Qgis \u2014 Gas Network Hydraulic Simulator",
+        "it": "GasNetSim 4Qgis — Simulatore Idraulico Reti Gas",
+        "en": "GasNetSim 4Qgis — Gas Network Hydraulic Simulator",
     },
     "main.close": {"it": "Chiudi", "en": "Close"},
     "main.menu_toggle": {"it": "Menu", "en": "Menu"},
-    "main.settings_button": {"it": "\u2699  Impostazioni", "en": "\u2699  Settings"},
-    "main.info_button": {"it": "\u2139  Info", "en": "\u2139  About"},
+    "main.settings_button": {"it": "⚙  Impostazioni", "en": "⚙  Settings"},
+    "main.info_button": {"it": "ℹ  Info", "en": "ℹ  About"},
+    "main.guida_button": {"it": "📖  Guida", "en": "📖  Guide"},
 })
 
 _SIDEBAR_WIDTH = 170
@@ -40,7 +42,7 @@ class GasNetSimMainDialog(QDialog):
 
         top_bar = QHBoxLayout()
         self.btn_menu = QToolButton()
-        self.btn_menu.setText("\u2630")
+        self.btn_menu.setText("☰")
         self.btn_menu.setToolTip(tr("main.menu_toggle"))
         self.btn_menu.setFixedSize(28, 28)
         self.btn_menu.clicked.connect(self._toggle_sidebar)
@@ -83,6 +85,10 @@ class GasNetSimMainDialog(QDialog):
         btn_settings.clicked.connect(self._open_settings)
         layout.addWidget(btn_settings)
 
+        btn_guida = QPushButton(tr("main.guida_button"))
+        btn_guida.clicked.connect(self._open_guida)
+        layout.addWidget(btn_guida)
+
         btn_info = QPushButton(tr("main.info_button"))
         btn_info.clicked.connect(self._open_info)
         layout.addWidget(btn_info)
@@ -107,4 +113,8 @@ class GasNetSimMainDialog(QDialog):
 
     def _open_info(self):
         dlg = InfoDialog(self.plugin_dir, self)
+        dlg.exec_()
+
+    def _open_guida(self):
+        dlg = GuidaDialog(self.plugin_dir, self)
         dlg.exec_()

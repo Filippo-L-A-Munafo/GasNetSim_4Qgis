@@ -1,0 +1,26 @@
+{
+  "title": "A High-Resolution Spatial and Sectoral Natural Gas Demand Disaggregation Benchmark for the Sicilian Transmission Grid",
+  "description": "An open-access benchmark dataset and mathematical methodology providing hourly natural gas demand profiles for all 167 delivery stations (Cabine Re.Mi. and major industrial poles) across the 9 administrative provinces of Sicily, Italy. Integrates ISTAT municipal boundaries, SNAM contractual delivery capacities, MASE 2024 annual sectoral statistics, and TERNA measured CCGT generation calibrated via a 3-harmonic Fourier series.",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0",
+  "upload_type": "dataset",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Munafò, Filippo Luca Alberto",
+      "affiliation": "Department of Engineering, University of Palermo, Palermo, Italy"
+    }
+  ],
+  "keywords": [
+    "natural gas demand",
+    "spatial disaggregation",
+    "transmission network",
+    "Sicily",
+    "SNAM",
+    "MASE",
+    "TERNA",
+    "Fourier series",
+    "hydrogen blending",
+    "open data"
+  ]
+}
