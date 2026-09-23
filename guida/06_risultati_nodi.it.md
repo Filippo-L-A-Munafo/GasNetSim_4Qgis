@@ -1,29 +1,78 @@
-# Risultati — Nodi
+# 9. Grandezze calcolate ai nodi
 
-Al termine della simulazione, il plugin crea un layer puntuale chiamato
-`[Risultati] Nodi — <nome_layer>`, con un campo per ogni grandezza calcolata.
-Questa sezione spiega cosa significa fisicamente ciascun campo.
+## 9.1 Elenco delle grandezze
 
-| Campo | Unità | Significato |
-|-------|-------|-------------|
-| `pressure_bar` | bar | Pressione assoluta calcolata dalla simulazione in quel nodo. È il risultato principale: rappresenta la forza che spinge il gas verso i nodi a pressione più bassa. |
-| `temperature_k` | K | Temperatura operativa al nodo. Nel modello attuale si propaga dal valore impostato nei Parametri Fisici (temperatura uniforme in tutta la rete). |
-| `sp_gravity` | — (adimensionale) | **Specific gravity** ("densità relativa"): rapporto tra la densità del gas in quel punto e la densità dell'aria, entrambe nelle stesse condizioni standard. Un valore < 1 significa gas più leggero dell'aria (per esempio l'idrogeno, sp. gravity ≈ 0,07); un valore vicino a 0,6 è tipico del metano puro. È una grandezza importante per valutare la dispersione del gas in caso di fuoriuscita (un gas più leggero dell'aria tende a salire e disperdersi verso l'alto). |
-| `z_factor` | — (adimensionale) | **Fattore di comprimibilità Z**: misura quanto il gas reale si discosta dal comportamento ideale (Z = 1 per un gas ideale). Dipende da pressione, temperatura e composizione. Serve al solutore per calcolare correttamente la densità del gas nelle condizioni operative (vedi "Concetti fisici di base"). |
-| `hhv_mj_sm3` | MJ/sm³ | **Higher Heating Value** (potere calorifico superiore): l'energia rilasciata dalla combustione completa di un metro cubo standard di quel gas, includendo il calore recuperabile dalla condensazione del vapor d'acqua prodotto. È la grandezza chiave per capire quanta energia sta realmente trasportando la rete in quel punto, non solo quanto "volume" di gas. |
-| `wobbe_mj_sm3` | MJ/sm³ | **Indice di Wobbe** = HHV / √(specific gravity). Misura l'intercambiabilità tra gas diversi: due gas con lo stesso indice di Wobbe rilasciano la stessa potenza termica attraverso lo stesso bruciatore, anche se hanno composizioni diverse. È l'indicatore più usato per valutare se una miscela (per esempio con idrogeno) è compatibile con apparecchi progettati per gas naturale puro. |
-| `density_kg_m3` | kg/m³ | Densità del gas nelle condizioni operative reali del nodo (pressione e temperatura locali). Più alta è la pressione, più il gas è denso — un metro cubo a 70 bar contiene molto più gas dello stesso metro cubo a pressione atmosferica. |
-| `std_density_kg_sm3` | kg/sm³ | Densità del gas alle **condizioni standard** di riferimento (15 °C, 1,01325 bar). A differenza della densità operativa, dipende solo dalla composizione del gas, non dalla pressione locale: è il valore usato per convertire fra portate in Smc e portate in massa (kg/s). |
-| `molar_mass` | g/mol | Massa molare media della miscela di gas in quel nodo, calcolata come media pesata sulle frazioni molari dei singoli componenti. Componenti più pesanti (propano, butano) aumentano la massa molare media; l'idrogeno, molto leggero, la riduce drasticamente anche a basse concentrazioni. |
+Contenute nel layer `R-N-<nome> #N` e nel file `results_nodes.csv`, in funzione
+delle selezioni operate al §8.2.
 
-## Come leggere questi valori in pratica
+| Campo | Simbolo | Unità | Definizione |
+|-------|---------|-------|-------------|
+| `pressure_bar` | p | bar (assoluti) | Pressione nodale, incognita primaria del sistema (2.3). Per la relazione con il valore assegnato si veda la (2.2). |
+| `temperature_k` | T | K | Temperatura del gas al nodo; uniforme e pari al valore assegnato (ipotesi isoterma). |
+| `sp_gravity` | SG | — | Densità relativa rispetto all'aria in condizioni standard, eq. (2.10). |
+| `z_factor` | Z | — | Fattore di comprimibilità da equazione GERG-2008 (§2.5). |
+| `hhv_mj_sm3` | HHV | MJ/sm³ | Potere calorifico superiore riferito alle condizioni standard (2.1). |
+| `wobbe_mj_sm3` | W | MJ/sm³ | Indice di Wobbe, eq. (2.11). |
+| `density_kg_m3` | ρ | kg/m³ | Densità nelle condizioni operative locali (p, T). |
+| `std_density_kg_sm3` | ρ_b | kg/sm³ | Densità in condizioni standard; dipende dalla sola composizione. Fattore di conversione fra portata volumetrica standard e portata massica. |
+| `molar_mass` | M | g/mol | Massa molare media della miscela. |
+| `h2_pct` | x_H₂ | % | Frazione molare di idrogeno nel nodo. |
+| `gas_comp` | — | testo | Composizione molare locale, nella forma `methane=0.86909;ethane=0.08661;…`, limitata ai componenti con frazione superiore a 1×10⁻⁴. |
+| `throughput_sm3h` | — | Smc/h | Portata complessiva entrante nel nodo dalle condotte afferenti. Non coincide con la domanda nodale: rappresenta il transito. |
+| `volumetric_flow_sm3s` | D | sm³/s | Domanda nodale con segno (§5.6). Presente nel solo layer QGIS. |
+| `energy_flow_mw` | — | MW | Domanda nodale espressa come potenza termica. Presente nel solo layer QGIS. |
+| `node_type` | — | testo | `reference` per i nodi a pressione imposta. Presente nel solo layer QGIS. |
 
-- Un valore di `pressure_bar` che scende sotto la soglia minima contrattuale
-  in un punto di consegna segnala un problema di capacità della rete in
-  quella zona.
-- Un `sp_gravity` o un `molar_mass` che cambiano bruscamente da un nodo
-  all'altro possono indicare un punto di miscelazione tra gas di
-  composizione diversa (per esempio un'immissione di idrogeno).
-- Il `wobbe_mj_sm3` è il primo valore da controllare quando si valuta la
-  compatibilità di un blend idrogeno/metano con la normativa e con gli
-  apparecchi degli utenti finali.
+## 9.2 Grandezze di composizione
+
+In presenza di una sola composizione, `sp_gravity`, `hhv_mj_sm3`,
+`wobbe_mj_sm3`, `molar_mass`, `std_density_kg_sm3` e `h2_pct` risultano
+uniformi sull'intera rete, mentre `z_factor` e `density_kg_m3` variano con la
+pressione locale.
+
+In presenza di immissioni a composizione differente (§5.7) tutte le grandezze
+di composizione variano da nodo a nodo secondo il campo di miscelazione
+risolto con lo schema del §2.6. La distribuzione di `h2_pct` descrive in tal
+caso la diluizione dell'idrogeno a partire dai punti di immissione e
+costituisce il risultato di interesse negli studi di blending parziale.
+
+## 9.3 Ordini di grandezza attesi
+
+Valori calcolati per il gas di default (SNAM Mazara del Vallo) e per la
+medesima miscela addizionata di idrogeno al 13,92 % molare, a 76 bar e
+288,15 K.
+
+| Grandezza | Mazara | Mazara + 13,92 % H₂ | Variazione |
+|-----------|--------|----------------------|------------|
+| SG | 0,6323 | 0,5539 | −12,4 % |
+| M | 18,32 g/mol | 16,05 g/mol | −12,4 % |
+| Z | 0,818 | 0,879 | +7,5 % |
+| ρ (76 bar) | ≈ 71 kg/m³ | ≈ 58 kg/m³ | −18 % |
+| ρ_b | 0,8172 kg/sm³ | 0,7160 kg/sm³ | −12,4 % |
+| HHV | 42,12 MJ/sm³ | 38,04 MJ/sm³ | −9,7 % |
+| W | 52,98 MJ/sm³ | 51,11 MJ/sm³ | −3,5 % |
+
+I valori sono stati ottenuti con il motore di calcolo del plugin nelle
+condizioni indicate (§11.7).
+
+## 9.4 Criteri di lettura
+
+**Pressione minima.** La verifica di adeguatezza si conduce sull'ordinamento
+crescente di `pressure_bar` o sulla rappresentazione tematica del medesimo
+campo: i nodi a pressione minore individuano le sezioni critiche della rete.
+
+**Uniformità anomala.** Un campo di pressione pressoché uniforme, associato a
+valori di `throughput_sm3h` prossimi a zero, indica che le domande non sono
+state acquisite (§12.7) e non che la rete sia sovradimensionata.
+
+**Qualità del gas.** HHV e indice di Wobbe vanno esaminati congiuntamente:
+l'incremento della frazione di idrogeno riduce entrambi, ma in misura diversa
+(§9.3), e il vincolo normativo determinante per le reti italiane riguarda la
+densità relativa (§13.4). La riduzione dell'indice di Wobbe, contenuta rispetto
+a quella del potere calorifico, è la grandezza che governa la compatibilità con
+le apparecchiature di utenza.
+
+**Coerenza con la condizione al contorno.** La pressione del nodo di
+riferimento deve risultare pari al valore assegnato aumentato di 1,013 bar
+(2.2). Uno scostamento indica che il nodo di riferimento non è quello atteso,
+o che ne esistono più di uno.

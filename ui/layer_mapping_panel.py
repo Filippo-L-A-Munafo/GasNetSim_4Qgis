@@ -27,6 +27,15 @@ register({
     "mapping.none_item": {"it": "-- nessuno --", "en": "-- none --"},
     "mapping.none_placeholder_item": {"it": "-- nessuno (usa placeholder) --", "en": "-- none (use placeholder) --"},
     "mapping.lbl_dem": {"it": "DEM (raster):", "en": "DEM (raster):"},
+    "mapping.chk_filter_dem_spikes": {
+        "it": "Filtro spike altimetrici DEM (Smoothing Laplaciano)",
+        "en": "DEM altimetry spike filter (Laplacian Smoothing)",
+    },
+    "mapping.chk_filter_dem_spikes_tooltip": {
+        "it": "Se attivo, applica un filtro topologico lungo il grafo per rimuovere spike o burroni anomali derivanti dal campionamento raster del DEM sui nodi intermedi.\nSe disattivato, vengono utilizzate le quote altimetriche grezze campionate direttamente dal DEM.",
+        "en": "If enabled, applies a topological filter along the graph to remove anomalous spikes or pits from raw DEM raster sampling on intermediate nodes.\nIf disabled, raw elevations directly sampled from the DEM are used without filtering.",
+    },
+
     "mapping.placeholder_out_folder": {"it": "Cartella dove salvare i CSV", "en": "Folder to save the CSVs"},
     "mapping.row_out_folder": {"it": "Cartella output:", "en": "Output folder:"},
     "mapping.row_ora": {"it": "Ora del giorno:", "en": "Hour of day:"},
@@ -281,7 +290,7 @@ register({
         "it": "Interrompe la simulazione in corso senza chiudere QGIS.",
         "en": "Stops the running simulation without closing QGIS.",
     },
-    "mapping.btn_campaign": {"it": "\U0001F4C5  Campagna (cartella di giorni)", "en": "\U0001F4C5  Campaign (folder of days)"},
+    "mapping.btn_campaign": {"it": "Campagna (cartella di giorni)", "en": "Campaign (folder of days)"},
     "mapping.btn_campaign_tooltip": {
         "it": "Seleziona una cartella con i file-giorno (.geojson dei nodi).\n"
               "Per ciascuno esegue il batch 24 ore in sequenza (solo file, niente mappa)\n"
@@ -291,7 +300,7 @@ register({
               "and prints a final campaign summary.",
     },
     "mapping.lbl_log": {"it": "Log:", "en": "Log:"},
-    "mapping.act_clear_log": {"it": "\U0001f5d1  Svuota log", "en": "\U0001f5d1  Clear log"},
+    "mapping.act_clear_log": {"it": "Svuota log", "en": "Clear log"},
 
     # ── Tab 2 — Visualizzazione ──────────────────────────────────────────────
     "mapping.grp_recolor": {"it": "Visualizza risultati su layer", "en": "View results on layer"},
@@ -411,12 +420,12 @@ register({
     # ── Dialog avvisi rete ───────────────────────────────────────────────────
     "mapping.warn_dlg_title": {"it": "⚠ Avvisi rete", "en": "⚠ Network warnings"},
     "mapping.warn_dlg_lbl": {"it": "<b>Problemi rilevati durante il collasso:</b>", "en": "<b>Problems detected during collapse:</b>"},
-    "mapping.btn_zoom": {"it": "\U0001F50D  Zoom su condotte", "en": "\U0001F50D  Zoom to pipelines"},
+    "mapping.btn_zoom": {"it": "Zoom su condotte", "en": "Zoom to pipelines"},
     "mapping.btn_zoom_tooltip": {
         "it": "Centra e zooma la mappa sulle condotte problematiche.",
         "en": "Centres and zooms the map on the problem pipelines.",
     },
-    "mapping.btn_flash": {"it": "\U0001F526  Flash", "en": "\U0001F526  Flash"},
+    "mapping.btn_flash": {"it": "Flash", "en": "Flash"},
     "mapping.btn_flash_tooltip": {
         "it": "Fa lampeggiare sulla mappa le condotte con problemi.\n"
               "Puoi cliccare più volte.",
@@ -507,8 +516,8 @@ register({
         "it": "Da dove vuoi importare i giorni (nodi) per la simulazione?",
         "en": "Where do you want to import the days (nodes) for the simulation from?",
     },
-    "mapping.campaign_btn_files": {"it": "\U0001F4C1 Scegli file dal disco (.geojson, .shp, ecc)", "en": "\U0001F4C1 Choose files from disk (.geojson, .shp, etc)"},
-    "mapping.campaign_btn_layers": {"it": "\U0001F5FA Scegli layer già caricati in QGIS", "en": "\U0001F5FA Choose layers already loaded in QGIS"},
+    "mapping.campaign_btn_files": {"it": "Scegli file dal disco (.geojson, .shp, ecc)", "en": "Choose files from disk (.geojson, .shp, etc)"},
+    "mapping.campaign_btn_layers": {"it": "Scegli layer già caricati in QGIS", "en": "Choose layers already loaded in QGIS"},
     "mapping.campaign_files_dlg_caption": {
         "it": "Seleziona i file-giorno (.geojson dei nodi) — Ctrl+A per tutti",
         "en": "Select the day files (node .geojson) — Ctrl+A to select all",
@@ -736,6 +745,11 @@ class LayerMappingPanel(QWidget):
         self.cb_dem.addItem(tr("mapping.none_item"), None)
         self._row_dem_label = QLabel(tr("mapping.lbl_dem"))
         fl_input.addRow(self._row_dem_label, self.cb_dem)
+        # Checkbox filtro spike altimetrici DEM (smoothing laplaciano topologico)
+        self.chk_filter_dem_spikes = QCheckBox(tr("mapping.chk_filter_dem_spikes"))
+        self.chk_filter_dem_spikes.setChecked(True)
+        self.chk_filter_dem_spikes.setToolTip(tr("mapping.chk_filter_dem_spikes_tooltip"))
+        fl_input.addRow("", self.chk_filter_dem_spikes)
 
         out_row = QHBoxLayout()
         self.txt_prepare_folder = QLineEdit()
@@ -2033,6 +2047,7 @@ class LayerMappingPanel(QWidget):
                     out_dir=out_input_dir,
                     ora=ora,
                     dem_layer=self.cb_dem.currentData(),
+                    enable_elevation_smoothing=self.chk_filter_dem_spikes.isChecked(),
                     nodes_layer=self.cb_nodes.currentData(),
                     diam_field=self.cb_diam_field.currentData() or 'Diametro_pollici',
                     diam_unit=self.cb_diam_unit.currentData() or 'in',
@@ -2565,6 +2580,7 @@ class LayerMappingPanel(QWidget):
                         out_dir=tmp_out,
                         ora=0,
                         dem_layer=self.cb_dem.currentData(),
+                    enable_elevation_smoothing=self.chk_filter_dem_spikes.isChecked(),
                         nodes_layer=self.cb_nodes.currentData(),
                         diam_field=self.cb_diam_field.currentData() or 'Diametro_pollici',
                         diam_unit=self.cb_diam_unit.currentData() or 'in',
@@ -2709,7 +2725,7 @@ class LayerMappingPanel(QWidget):
                 # --- FASE 2: Dispatching Day-Ahead (Isteresi MRT e Cut-In) ---
                 compressor_schedule = [False] * 24
                 if self.chk_enable_compressor.isChecked() and getattr(self, '_batch_pending_json', None):
-                    self._log_run("🔧 Calcolo Dispacciamento Day-Ahead: applicazione Isteresi MRT (6h)...", 'orange')
+                    self._log_run("Calcolo Dispacciamento Day-Ahead: applicazione Isteresi MRT (6h)...", 'orange')
                     UTILIZATION_FACTOR = 0.1152 # Snam 2018 (11.52% annuo)
                     MIN_RUN_TIME = 6
                     
@@ -2820,6 +2836,7 @@ class LayerMappingPanel(QWidget):
                     out_dir=out_input_dir,
                     ora=ora,
                     dem_layer=self.cb_dem.currentData(),
+                    enable_elevation_smoothing=self.chk_filter_dem_spikes.isChecked(),
                     nodes_layer=self.cb_nodes.currentData(),
                     diam_field=self.cb_diam_field.currentData() or 'Diametro_pollici',
                     diam_unit=self.cb_diam_unit.currentData() or 'in',
@@ -3331,7 +3348,7 @@ class LayerMappingPanel(QWidget):
             if renderer_clone:
                 new_lyr.setRenderer(renderer_clone)
             QgsProject.instance().addMapLayer(new_lyr)
-            self._log_run(f"💾 Salvato: {gpkg_path}", 'green')
+            self._log_run(f"Salvato: {gpkg_path}", 'green')
             return new_lyr
         except Exception as exc:
             self._log_run(f"⚠ Errore salvataggio layer: {exc}", 'orange')

@@ -1,94 +1,117 @@
-# Tab 2 — Simulation Parameters
+# 6. Tab 1 — Physical and numerical parameters
 
-This tab sets the physical and numerical parameters used by the calculation
-engine, and defines how the results will be displayed in QGIS at the end.
+All parameters in this section reside in the collapsible blocks of Tab 1. For
+each, the symbol, unit, default value and admissible range are given.
 
-## 1. Input CSV Folder
+## 6.1 ⚙ Compressors
 
-Select the folder containing `sf_nodes.csv` and `sf_pipelines.csv`. If you
-arrived here after pressing "Generate CSV" in Tab 1, this field is
-automatically filled with the folder chosen there.
+Block to be enabled for networks equipped with compressor stations.
 
-## 2. Physical Parameters
+| Field | Description |
+|-------|-------------|
+| **Field and Value** | Node-layer field and value identifying compressor nodes. |
+| **Pressure OUT** [bar] | Accepts either the name of a node-layer field holding the discharge pressure, or a constant numeric value (for example `70.0`). |
 
-These values are applied both when exporting the CSVs and during the actual
-simulation.
+### 6.1.1 Formulation
 
-| Field | Unit | Default | Description |
-|-------|------|---------|-------------|
-| **Reference pressure** | bar | 70 | Absolute pressure assigned to reference nodes. This is the value that "anchors" the whole network (see "Basic physics concepts" → "Reference nodes"). Typical values: 70 bar for a national transmission network, 25 bar for a regional one. |
-| **Temperature** | K | 300 | Gas operating temperature, in Kelvin (27 °C ≈ 300 K). It affects both gas compressibility (Z factor) and its density at operating conditions. |
-| **Flow for demand-less nodes** | sm³/s | 0.0001 | Minimum flow assigned to "junction" nodes (transit points with no consumption of their own) that show up as exactly zero demand in the CSVs. This prevents completely empty rows in the solver's matrix, which could otherwise be singular (no solution). If the network fails to converge because of isolated nodes, try increasing this to 0.001. |
+The node marked as a compressor is split into a suction node and a discharge
+node, connected by the station. The discharge pressure is imposed as an
+additional constraint equation of system (2.3); the flow handled is determined
+by the solution.
 
-> **Why is an operating temperature needed?** A gas's volume and density
-> depend on both pressure and temperature (gas law, see "Basic physics
-> concepts"). For simplicity the plugin assumes a uniform temperature across
-> the whole network — a reasonable approximation for buried pipes or ones not
-> exposed to strong local thermal variations.
+Since a pressure constraint may require the upstream network to deliver flows
+far in excess of those of natural operation, the procedure comprises:
 
-## 3. Solver Parameters
+1. a **baseline** simulation without the compressor, with relaxed tolerance and
+   a limited iteration count, used to establish flow directions and as the
+   starting point (*warm start*) of the subsequent simulation;
+2. in case of non-convergence, a **continuation on the control parameter**: the
+   discharge target is raised in successive increments from the equilibrium
+   value without compressor to the nominal set point, each step initialised
+   from the previous one.
 
-The network's system of equations is **non-linear** (the pressure drop in a
-pipe depends on the flow rate through it, which in turn depends on the
-pressures at its ends — see "Basic physics concepts"). Unlike a linear
-system, a non-linear one cannot be solved with a single direct calculation:
-it must be solved by **successive approximations**, using an iterative
-method called **Newton-Raphson**.
+Both stages are automatic and traced in the log with the `[compressori]`
+prefix.
 
-The basic idea: start from an initial guess of the pressures, compute how
-"wrong" the balance equations are with that guess (the error, or residual),
-and correct the guess in a direction that reduces the error. Repeat until
-the error drops below an acceptable threshold (convergence), or until a
-maximum number of unsuccessful attempts is reached (in which case the
-simulation stops without a result).
+### 6.1.2 Warning
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| **Max iterations** | 50 | Maximum number of correction cycles the Newton-Raphson method can run before giving up. Increase to 100–200 for very large, heavily branched, or "ill-conditioned" networks (with very different pipe diameters directly connected to each other). |
-| **Tolerance** | 1.0 | Threshold below which the residual error is considered acceptable and the calculation stops, declaring "convergence reached". Reduce to 0.1 for more precise results (but more iterations needed); increase if the network struggles to converge and lower precision is acceptable for your purpose. |
-| **URF (Under-Relaxation Factor)** | 2.0 | Controls how "decisive" each correction is at every iteration. A value that is too high can make the solution "oscillate" around the correct point without ever settling (like pushing a swing too hard); a value too low makes convergence slower but more stable. Reduce to 1.0–1.5 if the simulation oscillates without converging; increase up to 3.0 to speed up convergence on well-conditioned networks that already converge easily. |
-| **Auto-calibrate tol & URF** | Off | If enabled, the plugin automatically tries different combinations of tolerance and URF (starting from the set values and progressively reducing them) until it finds one that leads to convergence, saving you manual trial and error. |
+In the absence of *Pressure OUT* the engine adopts a fallback compression ratio
+of **1.1** (§13.3), insufficient under realistic load and typically a cause of
+divergence with collapsing pressures. The plugin issues a non-blocking warning
+before starting.
 
-## 4. Network and Gas Composition
+### 6.1.3 Quantities returned
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| **Pipe roughness** | 5×10⁻⁵ m | Absolute internal roughness of the pipe walls: how "rough" the inside is, on average, relative to the diameter. It feeds into the **Chen formula** (a variant of the Darcy-Weisbach equation, see "Basic physics concepts" → "Pressure drop") used to compute friction in every pipe. It depends on the material: steel ≈ 5×10⁻⁵ m; polyethylene (PE/HDPE) ≈ 7×10⁻⁶ m (much smoother); cast iron ≈ 2.6×10⁻⁴ m (rougher). |
-| **Export minimum flow** | 1×10⁻⁶ sm³/s | Placeholder value written into the CSV for nodes with no known demand, to prevent the export file from containing empty rows (which would cause a singular matrix in the solver). It is conceptually similar to the "Flow for demand-less nodes" in the Physical Parameters, but acts at a different point in the pipeline: this one during CSV export, the other as a correction right before the simulation. |
-| **Gas preset** | Natural gas (100% CH₄) | Shortcut to quickly fill in the composition. Available options: pure natural gas, "typical" natural gas (94% methane plus minor components), 10%, 20% or 50% hydrogen/methane blends, and pure hydrogen. Choose "Custom..." to enter a composition by hand. |
-| **Composition (dict)** | `{'methane': 1.0}` | The gas composition, as a Python dictionary of mole fractions for each component. The fractions must always add up to 1.0. Supported components: `methane`, `ethane`, `propane`, `butane`, `nitrogen`, `carbon_dioxide`, `hydrogen`. |
+At convergence the isentropic power absorbed by each station is computed:
 
-### Why gas composition matters for the hydraulic calculation
+    P = cp · T₁ · [ r^((n−1)/n) − 1 ] · ṁ / (η · 10⁶)        [MW]         (6.1)
 
-Gas is not a "generic" fluid: its physical properties — density, viscosity,
-compressibility (Z factor), heating value — depend directly on which
-molecules make it up and in what proportion. Different mixtures (e.g. pure
-methane versus a blend with 20% hydrogen) have different densities and
-compressibilities, and therefore behave differently in the same pipe at the
-same pressure: for the same standard volumetric flow rate, a lighter mixture
-(richer in hydrogen) flows faster and generates less pressure drop than pure
-methane, but it also carries less energy per unit volume (see the
-`hhv_mj_sm3` field in the "Results — Nodes" section). This is why the plugin
-lets you explicitly set the composition, and uses it in every single gas
-property calculation, node by node and pipe by pipe.
+with r = p_out/p_in the effective ratio, n = cp/cv, ṁ the mass flow rate and η
+the efficiency. Values are written to `results_compressors.csv` (§10.4).
 
-## 5. Result Visualisation
+## 6.2 ⚙ Advanced options
 
-This part does not affect the calculation at all: it only chooses **how**
-the results are drawn in the new QGIS layers created at the end of the
-simulation.
+| Parameter | Symbol | Unit | Default | Range | Description |
+|-----------|--------|------|---------|-------|-------------|
+| **Preserve intermediate nodes** | — | — | off | — | Disables the topological collapse: all intermediate nodes are retained and elevations are sampled from the DEM. Produces larger models but with the elevation profile resolved along the pipelines. Requires a DEM (§5.2). |
+| **Hourly node flow** | — | — | not assigned | — | Demand profile field in Mode A (§5.6). |
+| **Snap radius** | r_s | m | 50.0 | 0.1–10 000 | Maximum distance within which a node of the node layer is associated with a pipeline endpoint during the collapse. Insufficient values prevent recognition of reference nodes and attribution of demands; excessive values attribute demand to the wrong node. |
+| **Flow separator** | — | — | `;` | `;` `,` `\|` `:` space tab | Separator of the hourly profile values. |
+| **Reference pressure** | p_ref | bar (gauge) | 75.0 | 1–300 | Pressure imposed at reference nodes. For conversion to absolute pressure see (2.2). |
+| **Temperature** | T | K | 288.15 | 250–400 | Gas temperature, uniform across the network (isothermal assumption, §1.3). |
+| **Placeholder flow** | D_min | sm³/s | 1×10⁻⁴ | 0–10 | Demand attributed to transit nodes, i.e. those without their own demand. It has a regularising function: an identically zero balance row can render the Jacobian matrix singular. |
+| **Pipe roughness** | ε | m | 1.2×10⁻⁵ | 1×10⁻⁷–0.1 | Absolute roughness of the internal wall, parameter of (2.9). Values by material in §13.2. |
+| **Minimum export flow** | — | sm³/s | 1×10⁻⁶ | 1×10⁻¹⁰–1 | Value written to the input file for nodes without a known demand. It acts at writing time; *Placeholder flow* acts later, at validation, and prevails. |
+| **Result layer decimals** | — | — | 4 | 0–10 | Decimal digits of the numeric fields of the layers produced. |
+| **Show collapsed layer in the legend** | — | — | on | — | The `Condotte #N` / `Nodi #N` layers are made visible in the legend. If disabled they are still created, being required for Mode B. |
+| **Create coloured original pipelines layer** | — | — | off | — | Produces an additional `R-P-orig-…` layer carrying the results on the original, non-collapsed geometry. |
 
-### Nodes
+## 6.3 ⚙ Solver parameters
 
-| Element | Description |
-|---------|-------------|
-| **Colour by** | The field used for the node layer's colour scale. Options: Pressure, Temperature, Specific gravity, Z-factor, HHV, Wobbe, Density, Standard density, Molar mass (see the "Results — Nodes" section for the physical meaning of each). |
-| **Field checkboxes** | Chooses which result fields are included as attributes in the node layer (queryable with QGIS's "Identify" tool). Active by default: Pressure, Temperature, Specific gravity, Z-factor, HHV, Wobbe. |
+Theoretical reference: §2.7.
 
-### Pipes
+| Parameter | Unit | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| **Max iterations** | — | 50 | 10–2000 | Maximum number of Newton-Raphson iterations. See the warning in 6.3.1. |
+| **Tolerance** | Sm³/s | 0.001 | 1×10⁻⁴–10 | Threshold of criterion (2.14): maximum balance imbalance admitted per node. The adjacent box reports the equivalent in Sm³/h (multiplication by 3600): the default corresponds to 3.6 Sm³/h. |
+| **URF** | — | 2.0 | 0.1–20 | Under-relaxation factor of (2.13). **It appears in the denominator**: larger values shorten the step and stabilise the iteration; values below 1 amplify the Newton step. The assigned value acts as the lower bound used by the adaptive scheme (§2.7). |
+| **Auto-calibrate tol and URF** | — | off | — | Assigns tolerance and URF as a function of the number of nodes according to table §13.1.1 and, if convergence fails, walks the same ladder towards more relaxed combinations. Enabling it disables the two corresponding fields. |
+| **Refine precision** | — | off | — | After the first convergence, repeats the solution with decreasing tolerances — first by factors of 10, then by bisection on a logarithmic scale — down to the limit of 1×10⁻⁴, retaining the result corresponding to the smallest tolerance actually achieved. Independent of *Auto-calibrate*: the latter defines the starting point, *Refine precision* the destination. The value to be quoted when documenting results is the **final** tolerance, reported in the log. |
+| **Force Multiprocess** | — | on | — | Execution in independent Python processes, required for parallel simulations (§7.3, §7.4) to make effective use of multiple cores. |
 
-| Element | Description |
-|---------|-------------|
-| **Colour by** | The field used for the pipe layer's colour scale. Options: Flow rate (Sm³/h), Velocity (m/s), Average pressure (bar), Specific gravity, Z-factor, Density. |
-| **Field checkboxes** | Result fields to include as attributes in the pipe layer. Active by default: Flow rate, Absolute flow rate, Velocity, Average pressure, Specific gravity. |
-| **Show flow direction arrows** | If enabled (default), draws a small triangular marker at the centre of every pipe, oriented in the actual direction the gas flows (the geometry is automatically flipped for pipes with negative flow, i.e. flow from B to A — see "Results — Pipes"). Very useful to understand flow direction at a glance in a complex network. |
+### 6.3.1 Warning on the maximum iteration count
+
+The number of iterations required depends on the distance between the initial
+state and the solution, not on the size of the network. In the verification
+runs performed on this plugin (§11.7) the default value of 50 iterations proved
+**insufficient** on all three networks tested, including two networks of 4 and
+10 nodes; the network of §11 converges in 92 iterations.
+
+Setting **Max iterations = 200** as a starting point is therefore recommended.
+The increase carries no penalty: the computation terminates as soon as
+criterion (2.14) is met.
+
+## 6.4 Gas Composition
+
+| Field | Description |
+|-------|-------------|
+| **Base gas** | Composition preset: *SNAM — Mazara del Vallo (Algerian gas)* (default), *SNAM — Gela (Libyan gas)*, *Pure methane (100% CH₄)*, *Typical natural gas (94% CH₄)*, *Pure hydrogen (H₂)*, *Custom…*. Molar fractions are given in §13.3. |
+| **H₂ addition** | **Molar** fraction of hydrogen added to the base gas, 0–99 %. The base composition is rescaled proportionally: denoting by x the hydrogen fraction and by y_k the base fractions, the resulting mixture has fractions y_k·(1−x) and hydrogen fraction x. |
+| **Export composition** | Composition actually written to the input file. It is updated automatically from the two preceding fields and may be edited manually for compositions not covered by the presets; the preset then becomes *Custom*. |
+
+### 6.4.1 Admissible components
+
+`methane`, `ethane`, `propane`, `isobutane`, `butane`, `isopentane`,
+`pentane`, `hexane`, `nitrogen`, `carbon dioxide`, `helium`, `hydrogen`.
+
+The key for carbon dioxide is **`carbon dioxide`**, with a space. Molar
+fractions must sum to unity.
+
+### 6.4.2 Effect of composition on the hydraulic solution
+
+Composition enters (2.4) through SG and Z and (2.9) through the Reynolds
+number. At equal standard volumetric flow rate, a mixture of lower specific
+gravity — for example one enriched with hydrogen — exhibits lower pressure loss
+and higher velocity, but lower energy content per unit volume. Assessment of a
+blending scenario therefore requires joint examination of pressure, velocity,
+heating value and Wobbe index (§9.4).

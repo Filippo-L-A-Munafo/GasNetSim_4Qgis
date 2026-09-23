@@ -1,43 +1,85 @@
-# The plugin interface
+# 3. Interface architecture
 
-When you open GasNetSim 4Qgis (toolbar icon, or the **GasNetSim_4Qgis**
-menu), a single window opens, divided into three horizontal areas plus a
-hidden side menu.
+## 3.1 Launching
 
-## The three main panels
+The plugin is launched from the QGIS toolbar icon or from **Plugins →
+GasNetSim_4Qgis**. A single resizable window opens, independent of the main
+QGIS window: the map remains accessible during configuration and computation.
 
-| Panel | Location | Content |
-|-------|----------|---------|
-| **Preparation** | Left (most of the window) | The two tabs "Prepare Network" and "Simulation Parameters", described in the following sections of this Guide. This is where you spend most of your time. |
-| **Dashboard** | Centre | The real-time simulation log: shows every stage of the calculation as it happens (CSV validation, network loading, solver iterations, final pressure summary, result-layer creation). Especially useful to understand *where* a simulation that fails to converge gets stuck. |
-| **Properties Inspector** | Right | Shows the attributes of the feature (node or pipe) currently selected on the QGIS map. Lets you quickly check the values of a specific element without opening the layer's attribute table. |
+## 3.2 Window organisation
 
-You can resize the window freely (it is designed to be used full-screen or
-close to it, since the preparation panel contains many fields).
+The window consists of a collapsible side bar and a three-tab container.
 
-## The side menu (☰)
+### 3.2.1 Side bar
 
-At the top left there is a **☰** button that opens/closes a side bar with
-three buttons:
+Opened and closed with the **☰** button at the top left.
 
-| Button | Function |
-|--------|----------|
-| **⚙ Settings** | Lets you change the interface language (Italian/English). The change takes effect the next time you open the plugin. |
-| **📖 Guide** | Opens this guide — the full user manual you are reading now, organised into navigable sections. |
-| **ℹ About** | Shows the plugin version, author, repository link and licensing information. |
+| Command | Function |
+|---------|----------|
+| ⚙ Settings | Selection of the interface language (Italian/English). The change takes effect the next time the plugin is opened. |
+| Guide | Opens the present document. |
+| ℹ About | Version, author, repository, licence. |
 
-## The "Close" button
+### 3.2.2 Tabs
 
-At the bottom right, it closes the plugin window. It does not interrupt any
-simulation that has already completed (result layers stay in the QGIS
-project like any other layer), but if a simulation is still running it is
-best to wait for it to finish before closing.
+| Tab | Designation | Reference |
+|-----|-------------|-----------|
+| Tab 0 | Check Pipelines | §4 |
+| Tab 1 | Prepare & Simulate | §5, §6, §7 |
+| Tab 2 | View Results | §8 |
 
-## A practical note
+## 3.3 Structure of Tab 1
 
-The plugin **never modifies your original layers**: it reads the geometries
-and attributes of the layers you select, but everything it produces
-(collapsed layers, result layers, CSV files) is created as a new element,
-leaving the source data untouched. This lets you try different
-configurations (e.g. different snapping radii, or different hours of the
-day) without risking damage to your original data.
+Tab 1 is divided into two columns separated by a movable splitter.
+
+**Left column** — scrollable configuration form, articulated in six blocks:
+
+| Block | Title | Visibility | § |
+|-------|-------|------------|---|
+| 1 | Input Data | always visible | 5.2 |
+| 2 | Collapse Options / Already Collapsed Layers and field mapping | depends on mode | 5.3–5.5 |
+| 3 | ⚙ Compressors | on request | 6.1 |
+| 4 | ⚙ Advanced options | on request | 6.2 |
+| 5 | ⚙ Solver parameters | on request | 6.3 |
+| 6 | Gas Composition | always visible | 6.4 |
+
+Blocks marked ⚙ are collapsed on opening and expand when the corresponding
+checkbox is ticked. This arrangement keeps visible the minimum set of
+parameters required for a simulation, deferring the physical and numerical
+parameters to those who need to modify them.
+
+**Right column** — execution commands (§7.1) and the log window. The log
+reports in real time the stages of the computation, the parameters actually
+adopted and the outcome; it is the primary reference for diagnostics (§12). The
+log's context menu allows it to be cleared.
+
+## 3.4 Treatment of user data
+
+The plugin does not modify the source layers: the topological layers, result
+layers, CSV files and GeoPackages produced are all new items (§7.6).
+
+The single exception is explicit and subject to confirmation: in Tab 0, the
+endpoint snapping operation may be applied to the original layer instead of a
+copy (§4.3); if the layer is file-based, the change is irreversible.
+
+## 3.5 Coordinate reference system
+
+Internal geometric processing (graph construction, node snapping, length
+computation) is carried out in **EPSG:25833** (ETRS89 / UTM zone 33N). Layers
+in other reference systems are reprojected.
+
+Consequently the metric quantities exposed by the interface — *Snap radius*
+(§6.2) and the snapping *Tolerance* (§4.3) — are expressed in metres. Using
+layers in geographic coordinates (EPSG:4326) is discouraged: tolerances would
+have to be expressed in degrees and computed lengths would be meaningless.
+
+## 3.6 Elements not present
+
+To avoid fruitless searching, the interface does **not** provide:
+
+- a dedicated tab for simulation parameters: these reside in blocks 4–6 of
+  Tab 1;
+- a field for the folder of input CSV files: the folder is unique and is
+  specified in block 1 of Tab 1 (§5.2);
+- a selection of friction correlation or equation of state: these are fixed to
+  Chen (1979) and GERG-2008 respectively (§2.4.2, §2.5).

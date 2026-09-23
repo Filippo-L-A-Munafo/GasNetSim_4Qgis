@@ -1,118 +1,153 @@
-# Technical references & standards
+# 13. Technical and regulatory references
 
-This section collects the reference values, formulas and regulatory
-classifications used as the basis for the plugin's default parameters. It's
-meant as a quick reference, not something you need to read in one sitting.
+## 13.1 Default values
 
-## Pipe classification by "species" (Italian D.M. 17/04/2008)
+| Parameter | Symbol | Value | Unit | § |
+|-----------|--------|-------|------|---|
+| Reference pressure | p_ref | 75.0 | bar gauge | 6.2 |
+| Temperature | T | 288.15 | K | 6.2 |
+| Absolute roughness | ε | 1.2×10⁻⁵ | m | 6.2 |
+| Placeholder flow | D_min | 1×10⁻⁴ | sm³/s | 6.2 |
+| Minimum export flow | — | 1×10⁻⁶ | sm³/s | 6.2 |
+| Snap radius | r_s | 50.0 | m | 6.2 |
+| Result layer decimals | — | 4 | — | 6.2 |
+| Maximum iteration count | — | 50 | — | 6.3 |
+| Tolerance | tol | 1×10⁻³ | Sm³/s | 6.3 |
+| Under-relaxation factor | URF | 2.0 | — | 6.3 |
+| Composition | — | SNAM Mazara del Vallo | — | 6.4 |
+| Friction correlation | — | Chen (1979) | — | 2.4.2 |
+| Equation of state | — | GERG-2008 | — | 2.5 |
+| Standard conditions | T_b, p_b | 288.15 K; 101 325 Pa | — | 2.2 |
 
-Classification valid for natural gas **transmission** networks in Italy,
-based on Maximum Operating Pressure (MOP):
+### 13.1.1 Auto-calibration ladder
 
-| Species | MOP (Max Operating Pressure) | Network type |
-|---------|-------------------------------|---------------|
-| **1st** | > 24 bar (2.4 MPa) | National Transmission Network (RNT) |
-| **2nd** | 12 bar < MOP ≤ 24 bar (1.2–2.4 MPa) | Regional Transmission Network (RRT) |
-| **3rd** | 5 bar < MOP ≤ 12 bar (0.5–1.2 MPa) | High-pressure user derivations |
-| **4th** | 1.5 bar < MOP ≤ 5 bar (0.15–0.5 MPa) | Local distribution networks |
+| Number of nodes | tol [Sm³/s] | URF [–] |
+|-----------------|-------------|---------|
+| < 100 | 0.1 | 1.5 |
+| < 500 | 1.0 | 2.0 |
+| < 2000 | 5.0 | 2.5 |
+| ≥ 2000 | 10.0 | 3.0 |
 
-> Simulations typically run with this plugin concern **1st and 2nd species**
-> networks (RNT/RRT), with pressures in the 24–70 bar range.
+Should convergence fail, the ladder is walked towards the more relaxed values.
 
-## Maximum pipe velocity — erosion formula (API RP 14E)
+## 13.2 Absolute roughness by material
 
-The erosional velocity estimates the threshold beyond which high-velocity
-gas flow starts to damage (through erosion) the pipe's internal walls,
-particularly in the presence of solid or liquid particles carried by the
-flow:
+| Material | ε [m] |
+|----------|-------|
+| Internally coated steel (transmission) | 1.2×10⁻⁵ |
+| Bare steel | 5×10⁻⁵ |
+| Polyethylene (PE/HDPE) | 7×10⁻⁶ |
+| Cast iron | 2.6×10⁻⁴ |
 
-**Ve = C / √ρgas**
+### 13.2.1 Diameter unit conversion
 
-where:
+| Code | Factor to metres |
+|------|-------------------|
+| `m` | 1 |
+| `in` | 0.0254 |
+| `cm` | 0.01 |
 
-- **Ve** — erosional velocity [m/s]
-- **ρgas** — gas density at operating conditions [kg/m³]
-- **C = 100** — empirical constant for continuous service, dry gas (SI
-  units)
+## 13.3 Reference compositions
 
-Note the behaviour: the denser the gas (high pressures), the **lower** the
-allowable erosional velocity — the opposite of what intuition might suggest.
-This is because, at the same velocity, a denser gas carries more momentum
-and therefore more impact energy against the walls.
+Molar fractions. The two SNAM compositions correspond to the principal entry
+points of the Sicilian system.
 
-### Indicative estimates for methane (CH₄) at 15 °C
+| Component | Mazara del Vallo (Algerian) | Gela (Libyan) |
+|-----------|------------------------------|----------------|
+| methane | 0.86909 | 0.86645 |
+| ethane | 0.08661 | 0.05246 |
+| propane | 0.01163 | 0.02022 |
+| isobutane | 0.00072 | 0.00317 |
+| butane | 0.00112 | 0.00478 |
+| isopentane | 0.00019 | 0.00071 |
+| pentane | 0.00019 | 0.00026 |
+| hexane | 0.00014 | 0.00060 |
+| nitrogen | 0.01334 | 0.04455 |
+| carbon dioxide | 0.01672 | 0.00602 |
+| helium | 0.00025 | 0.00078 |
 
-| Species | Typical MOP | Estimated ρ CH₄ | Ve (erosion) | Practical limit |
-|---------|-------------|-------------------|--------------|------------------|
-| 1st | 60–70 bar | ~44–55 kg/m³ | ~10–13 m/s | ~10–15 m/s |
-| 1st | 24–40 bar | ~17–30 kg/m³ | ~13–18 m/s | ~15 m/s |
-| 2nd | 12–24 bar | ~8–17 kg/m³ | ~18–24 m/s | ~15–20 m/s |
-| 3rd | 5–12 bar | ~3.5–8 kg/m³ | ~24–35 m/s | noise ~15 m/s |
-| 4th | 1.5–5 bar | ~1–3.5 kg/m³ | > 35 m/s | noise ~10 m/s |
+Further presets: `{'methane': 1.0}`; `{'methane': 0.94, 'ethane': 0.04,
+'propane': 0.01, 'nitrogen': 0.01}`; `{'hydrogen': 1.0}`.
 
-> For Sicilian RNT transmission networks (60–70 bar), the practical velocity
-> limit is typically **10–14 m/s**. Exact values derived from SNAM/Terna
-> standards should be verified case by case.
+Default compressor station parameters: compression ratio 1.1; efficiency 0.85;
+isentropic process.
 
-## Supported gas compositions
+## 13.4 Pipeline classification and gas quality
 
-Components recognised by the calculation engine (keys of the Python
-dictionary used in the "Composition" field):
+### 13.4.1 Classes (Italian D.M. 17/04/2008)
 
-| Key | Component |
-|-----|-----------|
-| `methane` | Methane (CH₄) |
-| `ethane` | Ethane (C₂H₆) |
-| `propane` | Propane (C₃H₈) |
-| `butane` | Butane (C₄H₁₀) |
-| `nitrogen` | Nitrogen (N₂) |
-| `carbon_dioxide` | Carbon dioxide (CO₂) |
-| `hydrogen` | Hydrogen (H₂) |
+| Class | MOP | Network type |
+|-------|-----|--------------|
+| 1st | > 24 bar | National transmission network |
+| 2nd | 12 < MOP ≤ 24 bar | Regional transmission network |
+| 3rd | 5 < MOP ≤ 12 bar | High-pressure user branches |
+| 4th | 1.5 < MOP ≤ 5 bar | Local distribution |
 
-### Presets available in the plugin
+### 13.4.2 Specific gravity constraint
 
-```
-# Pure natural gas
-{'methane': 1.0}
+Italian regulation on the quality of gas injected into transmission networks
+sets a lower limit on specific gravity, d ≥ 0.555. Since hydrogen appreciably
+reduces SG (§9.3), that constraint — rather than the heating value — normally
+governs the maximum blendable fraction. For Algerian gas from Mazara del Vallo
+the limit is reached at a hydrogen molar fraction of about **13.9 %**, the
+value adopted in the example data distributed with the plugin.
 
-# Typical natural gas (Italian network)
-{'methane': 0.94, 'ethane': 0.04, 'propane': 0.01, 'nitrogen': 0.01}
+> The regulatory references given are indicative and must be verified against
+> the sources in force before any formal use.
 
-# 10% hydrogen blend
-{'methane': 0.90, 'hydrogen': 0.10}
+## 13.5 Erosional velocity limit
 
-# 20% hydrogen blend
-{'methane': 0.80, 'hydrogen': 0.20}
+API RP 14E criterion:
 
-# 50% hydrogen blend
-{'methane': 0.50, 'hydrogen': 0.50}
+    v_e = C / √ρ                                                         (13.1)
 
-# Pure hydrogen
-{'hydrogen': 1.0}
-```
+with v_e the erosional velocity [m/s], ρ the gas density at operating
+conditions [kg/m³], and C = 100 in SI units for continuous service with dry
+gas.
 
-## Solver parameters — reference values
+Equation (13.1) implies that the allowable velocity **decreases** as density,
+and hence operating pressure, increases.
 
-| Parameter | Plugin default | Notes |
-|-----------|------------------|-------|
-| Max iterations | 50 | Increase to 100–200 for complex networks |
-| Tolerance | 1.0 | In the solver's internal units |
-| URF | 2.0 | Under-relaxation factor |
-| Reference pressure | 70 bar | Typical for Sicilian RNT |
-| Reference temperature | 300 K (27 °C) | |
-| Pipe roughness | 5×10⁻⁵ m | Steel. PE/HDPE: 7×10⁻⁶ m; cast iron: 2.6×10⁻⁴ m |
+| Class | MOP | Estimated ρ [kg/m³] | v_e [m/s] | Practical limit [m/s] |
+|-------|-----|----------------------|-----------|------------------------|
+| 1st | 60–70 bar | 44–55 | 10–13 | 10–15 |
+| 1st | 24–40 bar | 17–30 | 13–18 | ≈ 15 |
+| 2nd | 12–24 bar | 8–17 | 18–24 | 15–20 |
+| 3rd | 5–12 bar | 3.5–8 | 24–35 | ≈ 15 (noise) |
+| 4th | 1.5–5 bar | 1–3.5 | > 35 | ≈ 10 (noise) |
 
-## Supported diameter units
+## 13.6 File formats
 
-| Code | Conversion factor to metres |
-|------|-------------------------------|
-| `m` | × 1 |
-| `in` | × 0.0254 |
-| `cm` | × 0.01 |
+Field separator `;` for all files produced and read by the solver.
 
-## Reference networks already tested with the plugin
+**`sf_nodes.csv`** — `node_index`, `pressure_pa`, `flow_MW`, `flow_sm3_per_s`,
+`altitude_m`, `temperature_k`, `gas_composition`, `node_type`, `latitude`,
+`longitude`, `flow_type`.
 
-| Network | Nodes | Pipes | Pressure | Outcome |
-|---------|-------|-------|----------|---------|
-| RRT Trapani | 7 | 6 | 70 bar | Converged in 4 iterations, ~7.7 s |
-| RNT Sicilia | — | — | 24–25 bar | Converged OK (pressures 24.08–25.33 bar) |
+**`sf_pipelines.csv`** — `pipeline_index`, `inlet_index`, `outlet_index`,
+`diameter_m`, `length_m`, `friction_method`, `roughness_m`.
+
+**`sf_compressors.csv`** — `compressor_index`, `inlet`, `outlet`,
+`compression_ratio`, `efficiency`, `thermodynamic_process`, `control_mode`,
+`p_out_target`.
+
+**`results_nodes.csv`**, **`results_pipes.csv`**, **`results_compressors.csv`**
+— fields described in §9 and §10.
+
+## 13.7 Bibliographic and regulatory references
+
+1. Chen N.H. (1979). *An Explicit Equation for Friction Factor in Pipe*.
+   Industrial & Engineering Chemistry Fundamentals, 18(3), 296–297.
+2. ISO 20765-2:2015. *Natural gas — Calculation of thermodynamic properties —
+   Part 2: Single-phase properties (gas, liquid, and dense fluid) for extended
+   ranges of application* (GERG-2008 equation of state).
+3. UNI EN ISO 13443. *Natural gas — Standard reference conditions*.
+4. API RP 14E. *Recommended Practice for Design and Installation of Offshore
+   Production Platform Piping Systems*.
+5. EN 16726. *Gas infrastructure — Quality of gas — Group H*.
+6. Italian D.M. 17 April 2008. *Technical rule for the design, construction,
+   testing, operation and surveillance of natural gas transmission works and
+   installations with relative density not exceeding 0.8*.
+7. Lu Y. et al. *GasNetSim* — Forschungszentrum Jülich, ICE-1: Energy Systems
+   Engineering. MPL-2.0 licence.
+   https://jugit.fz-juelich.de/iek-10/public/simulation/gasnetsim

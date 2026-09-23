@@ -1,177 +1,188 @@
-# Concetti fisici di base
+# 2. Formulazione del modello
 
-Questa sezione spiega, in linguaggio semplice, i concetti fisici che stanno
-dietro a quasi tutti i campi dell'interfaccia. Non serve leggerla tutta prima
-di iniziare a usare il plugin, ma è il punto di riferimento a cui le altre
-sezioni rimanderanno spesso.
+Questa sezione riporta le equazioni effettivamente implementate nel solutore,
+nella forma in cui sono codificate, e definisce il significato fisico dei
+parametri che l'interfaccia espone. La simbologia completa è nel §14.
 
-## La rete come "grafo": nodi e condotte
+## 2.1 Schematizzazione della rete
 
-Per il calcolo, una rete gas è semplificata in due soli tipi di elementi:
+La rete è rappresentata come un grafo orientato G = (N, P), dove N è l'insieme
+dei nodi e P quello delle condotte. Ogni condotta p ∈ P collega un nodo di
+ingresso i e un nodo di uscita j, con orientamento convenzionale assegnato in
+fase di costruzione del modello e privo di significato fisico: il verso
+effettivo del flusso è un risultato del calcolo (§10.2).
 
-- **Nodi**: punti dove il gas entra nella rete, esce dalla rete (consumo), o
-  dove più condotte si incontrano. Ogni nodo ha una posizione, una quota
-  altimetrica e, se è un punto di prelievo, una portata di consumo.
-- **Condotte**: collegano due nodi (nodo A e nodo B) e trasportano il gas.
-  Ogni condotta ha una lunghezza, un diametro e una rugosità interna.
+I nodi si distinguono in:
 
-Questa rappresentazione si chiama **grafo**: i nodi sono i "vertici", le
-condotte sono gli "archi". È lo stesso tipo di schema che si usa per i
-circuiti elettrici (nodi = punti del circuito, condotte = resistenze) o per
-le reti idrauliche in generale. Il primo compito del plugin (il "collasso
-topologico" descritto nella sezione Tab 1) è proprio trasformare le geometrie
-GIS grezze in questo grafo pulito di nodi e condotte.
+- **nodi di riferimento** (node_type = `reference`): nodi a pressione imposta,
+  che costituiscono le condizioni al contorno del problema e in cui viene
+  assegnata la composizione del gas immesso;
+- **nodi di domanda o junction**: nodi in cui è assegnata una portata volumetrica
+  in condizioni standard, positiva se prelevata, negativa se immessa.
 
-## Pressione: assoluta, relativa, e perché conta così tanto
+## 2.2 Condizioni standard e convenzioni di pressione
 
-La **pressione** è la grandezza più importante di tutta la simulazione: è
-lei che "spinge" il gas lungo le condotte, dal punto a pressione più alta
-verso quello a pressione più bassa (esattamente come l'acqua scende da un
-punto più alto a uno più basso).
+Le portate volumetriche sono riferite alle condizioni standard
 
-Un dettaglio da non sottovalutare: esistono due modi di misurare la
-pressione:
+    T_b = 288,15 K        p_b = 1 atm = 101 325 Pa                        (2.1)
 
-- **Pressione assoluta**: misurata a partire dal vuoto assoluto (0 bar =
-  nessuna pressione). È quella che usa il plugin.
-- **Pressione relativa (o manometrica)**: misurata a partire dalla pressione
-  atmosferica (0 bar = pressione atmosferica, ~1,013 bar assoluti). È quella
-  che leggono di solito i manometri sul campo.
+coerenti con UNI EN ISO 13443. L'unità corrispondente è lo standard metro cubo
+(Smc, equivalentemente sm³).
 
-Il plugin lavora sempre in **pressione assoluta**. Se prendi un valore da un
-manometro di campo (relativo), ricordati di sommare circa 1 bar (la
-pressione atmosferica) prima di usarlo come pressione di riferimento.
+**Convenzione di pressione.** Il valore assegnato ai nodi di riferimento
+attraverso il parametro *Pressione reference* è interpretato come pressione
+**relativa** (manometrica); la conversione in pressione assoluta avviene
+all'atto della costruzione del modello:
 
-## Portata: perché si misura in "Smc" e non in metri cubi qualsiasi
+    p_abs = p_gauge + p_atm,     p_atm = 101 325 Pa                       (2.2)
 
-A differenza dell'acqua, il gas è **comprimibile**: lo stesso "pacchetto" di
-molecole di gas occupa un volume diverso a seconda della pressione e della
-temperatura in cui si trova (più pressione = più gas nello stesso spazio).
+Tutte le pressioni restituite dal calcolo (§9) sono **assolute**. Un valore
+assegnato di 75 bar corrisponde pertanto a 76,013 bar nei risultati.
 
-Questo crea un problema pratico: se dico "in questa condotta passano 100
-metri cubi di gas all'ora", quella frase non ha senso finché non specifico
-*a quale pressione e temperatura* sto misurando quel volume, perché lo stesso
-gas a 70 bar occupa molto meno spazio dello stesso gas a pressione
-atmosferica.
+## 2.3 Equazione di continuità ai nodi
 
-La soluzione adottata dall'industria del gas (e dal plugin) è misurare le
-portate in **condizioni standard**: si immagina di riportare tutto il gas a
-una pressione e temperatura di riferimento fisse (tipicamente 1,01325 bar e
-15 °C) e si misura il volume che occuperebbe *in quelle condizioni*. L'unità
-di misura che ne risulta si chiama **Smc** (Standard metro cubo) o Sm³, per
-distinguerla dal metro cubo "vero" nelle condizioni operative reali.
+Per ogni nodo i non di riferimento, la conservazione della massa impone
 
-Questo è il motivo per cui tutti i profili di consumo e tutti i risultati di
-portata nel plugin sono espressi in Smc/h o sm³/s: permette di confrontare e
-sommare portate senza doversi preoccupare della pressione a cui viaggia il
-gas in quel punto della rete.
+    Σ_(p ∈ P_i) s_(i,p) · Q_p − D_i = 0                                   (2.3)
 
-## Velocità: perché non è semplicemente "portata / area"
+dove Q_p è la portata volumetrica in condizioni standard della condotta p,
+s_(i,p) = +1 se la condotta entra nel nodo e −1 se ne esce, D_i è la domanda
+nodale (positiva in prelievo). Il sistema (2.3), scritto per tutti i nodi non
+di riferimento, costituisce il sistema di equazioni non lineari risolto dal
+solutore; le incognite sono le pressioni nodali.
 
-La **velocità** del gas in una condotta non si ottiene dividendo la portata
-Smc/h per la sezione della condotta, perché quella portata è espressa in
-condizioni standard, mentre il gas nella condotta viaggia nelle condizioni
-operative reali (alta pressione). Bisogna prima convertire la portata da
-condizioni standard a condizioni operative (usando la densità del gas a
-quella pressione e temperatura, e il fattore di comprimibilità — vedi sotto),
-e solo a quel punto dividerla per la sezione della condotta.
+## 2.4 Equazione di portata in condotta
 
-La velocità è un indicatore importante perché velocità troppo elevate
-causano rumore, vibrazioni ed erosione delle pareti della condotta (vedi la
-sezione "Riferimenti tecnici" per i limiti pratici).
+La portata è calcolata con l'equazione generale del moto del gas in condotta:
 
-## Perdita di carico: l'attrito che frena il gas
+    Q = sgn(Δ) · C_p · √( |p₁² − p₂² − H| / (Z · SG) )                    (2.4)
 
-Man mano che il gas scorre lungo una condotta, perde pressione a causa
-dell'attrito con le pareti interne della condotta — proprio come l'acqua che
-scorre in un tubo perde pressione per attrito. Questo fenomeno si chiama
-**perdita di carico**.
+con Δ = p₁² − p₂² − H. Il termine C_p raccoglie le caratteristiche fisiche
+della condotta:
 
-La perdita di carico dipende da:
+    C_p = K · (T_b / p_b) · D^2,5 · √( 1 / (L · T_avg · f) ) · η          (2.5)
 
-- la **portata**: più gas passa, più attrito c'è (dipendenza non lineare: se
-  raddoppio la portata, la perdita di carico più che raddoppia);
-- il **diametro** della condotta: condotte più strette generano più attrito
-  a parità di portata;
-- la **lunghezza** della condotta: più lunga è, più perdita accumula;
-- la **rugosità interna** della parete (quanto è "scabra" internamente il
-  tubo — dipende dal materiale, vedi sezione Tab 2);
-- la **densità e viscosità** del gas nelle condizioni operative.
+    K = π · √( R / (16 · M_aria) ),    M_aria = 28,97 g/mol               (2.6)
 
-Il plugin usa una formula specifica (la **formula di Chen**, una variante
-della più nota equazione di Darcy-Weisbach) per calcolare questo effetto per
-ogni condotta ad ogni iterazione del calcolo. I dettagli pratici (dove si
-imposta la rugosità) sono nella sezione Tab 2.
+dove D è il diametro interno, L la lunghezza, T_avg la temperatura media, f il
+fattore d'attrito, η il fattore di efficienza della condotta, R la costante
+universale dei gas.
 
-## Bilancio di massa ai nodi: la legge fondamentale della rete
+La pressione media nella condotta, usata per la valutazione delle proprietà del
+gas, è calcolata nella forma consueta per il moto dei gas:
 
-Ad ogni nodo della rete deve valere una regola semplicissima: **tutto il gas
-che entra in un nodo deve uscirne** (o essere consumato in quel punto). Non
-può "sparire" né "apparire" gas dal nulla. Questa regola si chiama
-**bilancio di massa** (o principio di continuità), ed è l'equivalente della
-legge di Kirchhoff delle correnti nei circuiti elettrici (la somma delle
-correnti che entrano in un nodo è uguale alla somma di quelle che escono).
+    p_avg = (2/3) · [ (p₁ + p₂) − (p₁ · p₂)/(p₁ + p₂) ]                   (2.7)
 
-Il motore di calcolo scrive questa equazione per ogni nodo della rete e la
-risolve simultaneamente insieme alle equazioni di perdita di carico su ogni
-condotta: il risultato finale (pressioni e portate) è l'unica combinazione di
-valori che soddisfa contemporaneamente tutte queste equazioni.
+che, per la comprimibilità, differisce dalla media aritmetica.
 
-## Nodi di riferimento: perché servono e cosa rappresentano fisicamente
+### 2.4.1 Correzione di dislivello
 
-Il sistema di equazioni descritto sopra ha infinite soluzioni se non si
-"ancora" a un valore assoluto noto: sapere che "il nodo X ha 2 bar in più del
-nodo Y" non basta a determinare la pressione assoluta di nessuno dei due.
-Serve almeno un punto della rete di cui si conosce già la pressione assoluta
-reale — tipicamente un punto di interconnessione con un'altra rete, una
-centrale di compressione, o uno stoccaggio.
+Il termine H rende conto della differenza di quota fra i due estremi:
 
-Questo punto si chiama **nodo di riferimento** (o "reference"): è una
-**condizione al contorno** del problema, esattamente come il "nodo di massa"
-in un circuito elettrico (il punto a cui si assegna arbitrariamente 0 Volt,
-da cui si misurano tutte le altre tensioni). Per questo il plugin **richiede
-obbligatoriamente almeno un nodo reference**: senza, il problema matematico
-non ha un'unica soluzione e la simulazione non può partire.
+    H = 0,06835 · SG · (h₂ − h₁) · p_avg² / (Z · T_avg)                   (2.8)
 
-## Comprimibilità del gas reale: perché non basta la legge dei gas ideali
+con h₁, h₂ quote dei nodi di ingresso e uscita. Il termine è nullo per condotte
+orizzontali. Per un gas a 70 bar la densità è dell'ordine di 70 kg/m³: su
+dislivelli di alcune centinaia di metri il contributo di (2.8) è confrontabile
+con quello dell'attrito, e in reti di montagna può prevalere. Ne consegue che
+l'accuratezza delle quote nodali è determinante quanto quella dei diametri
+(§5.4, §6.2).
 
-La legge dei gas ideali (pressione × volume = costante × temperatura) è
-un'approssimazione che funziona bene a basse pressioni, ma **non è accurata**
-alle pressioni tipiche delle reti di trasporto (decine di bar). I gas reali
-si comportano in modo leggermente diverso, e questo scostamento si misura con
-il **fattore di comprimibilità Z** (Z = 1 per un gas ideale; Z < 1 per il
-metano nelle condizioni tipiche delle reti di trasporto).
+### 2.4.2 Fattore d'attrito
 
-Il motore di calcolo tiene conto di questo effetto per ogni nodo e ogni
-condotta, ricalcolando Z in funzione della pressione, della temperatura e
-della composizione del gas in quel punto. Il campo `z_factor` nei risultati
-(vedi sezione "Risultati — Nodi") mostra proprio questo valore.
+Il fattore d'attrito è calcolato con la correlazione esplicita di **Chen
+(1979)**, valida su tutto il campo turbolento e nella transizione:
 
-## Regime permanente ("steady-state"): cosa NON calcola il plugin
+    1/√f = −2 · log₁₀[ ε/(3,7065·D)
+             − (5,0452/Re) · log₁₀( (ε/D)^1,1098 / 2,8257
+             + (7,149/Re)^0,8981 ) ]                                      (2.9)
 
-Il plugin calcola una **soluzione di regime permanente** (steady-state):
-assume che i consumi restino costanti nel tempo (quelli scelti per l'ora del
-giorno selezionata) e calcola qual è lo stato della rete una volta che si è
-"stabilizzata" con quei consumi. Non simula quindi cosa succede durante un
-transitorio (per esempio l'apertura improvvisa di una valvola, o come varia
-la pressione minuto per minuto durante un cambio di consumo). Per confrontare
-condizioni diverse (per esempio ora di punta vs ora di minimo consumo), si
-lanciano simulazioni separate, una per ogni ora di interesse.
+dove ε è la rugosità assoluta della parete (parametro *Rugosità condotte*,
+§6.2) e Re il numero di Reynolds, valutato con la viscosità dinamica della
+miscela calcolata con i metodi di Lucas e Herning-Zipperer.
 
-## In sintesi: l'analogia con i circuiti elettrici
+La scelta della correlazione è fissata dal plugin (`friction_method = chen` nei
+file di ingresso) e non è modificabile dall'interfaccia.
 
-Se hai familiarità con l'elettrotecnica, questa tabella può aiutarti:
+## 2.5 Equazione di stato e proprietà del gas
 
-| Circuito elettrico | Rete gas |
-|---------------------|----------|
-| Tensione (Volt) | Pressione (bar) |
-| Corrente (Ampere) | Portata (Smc/h) |
-| Resistenza (Ohm, lineare) | Perdita di carico in condotta (non lineare: dipende dalla portata stessa) |
-| Legge di Kirchhoff (nodi) | Bilancio di massa ai nodi |
-| Nodo di massa (0 V) | Nodo di riferimento (pressione nota) |
+Il fattore di comprimibilità Z, la densità, la densità in condizioni standard,
+la massa molare e le capacità termiche della miscela sono calcolati con
+l'equazione di stato **GERG-2008** (ISO 20765-2), in funzione di pressione,
+temperatura e composizione molare, e aggiornati nodo per nodo ad ogni
+iterazione.
 
-La differenza principale è che nella rete gas la "resistenza" di ogni
-condotta non è costante come in un resistore elettrico, ma dipende essa
-stessa dalla portata che ci scorre — motivo per cui il sistema di equazioni è
-**non lineare** e richiede un metodo iterativo per essere risolto (vedi la
-sezione Tab 2 → Parametri Solutore).
+Per un gas ideale si avrebbe Z = 1; nelle condizioni tipiche delle reti di
+trasporto (70–76 bar, 288 K) risulta Z ≈ 0,80÷0,88 (§9.3). Trascurare tale
+scostamento comporterebbe errori dell'ordine del 15–20 % sulla densità e, di
+conseguenza, sulle velocità calcolate.
+
+La densità relativa (specific gravity) è definita come
+
+    SG = M_gas / M_aria                                                   (2.10)
+
+e l'indice di Wobbe come
+
+    W = HHV / √SG                                                         (2.11)
+
+con HHV potere calorifico superiore riferito alle condizioni standard.
+
+## 2.6 Tracciamento della composizione
+
+In presenza di immissioni di gas a composizione diversa, la composizione in
+ciascun nodo è determinata per **miscelazione semplice** delle portate entranti
+pesate sulle rispettive composizioni. Poiché la composizione modifica le
+proprietà che compaiono nella (2.4), il problema idraulico e quello di
+composizione sono accoppiati e vengono risolti con uno schema **staggered**:
+ad ogni iterazione esterna si risolve il campo di pressione a composizione
+congelata, si aggiorna la composizione, e si itera fino a che entrambe le
+variazioni scendono sotto le rispettive soglie.
+
+Lo schema staggered è attivato automaticamente quando almeno un nodo non di
+riferimento possiede una composizione propria (§5.6); in caso contrario il
+solutore adotta uno schema diretto. La differenza fra i due schemi non è solo
+formale: incide sulla robustezza della convergenza (§12.3).
+
+## 2.7 Soluzione numerica
+
+Il sistema (2.3), non lineare per la dipendenza di Q dalle pressioni espressa
+dalla (2.4), è risolto con il metodo di **Newton-Raphson**. Detto F(x) il
+vettore dei residui di bilancio nodale e J(x) = ∂F/∂x la matrice jacobiana,
+ad ogni iterazione si risolve
+
+    J(x⁽ᵏ⁾) · Δx = F(x⁽ᵏ⁾)                                               (2.12)
+
+e si aggiorna lo stato secondo
+
+    x⁽ᵏ⁺¹⁾ = x⁽ᵏ⁾ + Δx / URF                                             (2.13)
+
+**Il fattore URF compare a denominatore.** Un valore elevato riduce l'ampiezza
+del passo e quindi *smorza* l'iterazione, aumentando la stabilità a scapito
+della velocità; un valore inferiore all'unità amplifica il passo di Newton. Il
+valore impostato dall'utente costituisce il limite inferiore (passo più
+aggressivo ammesso): il solutore lo aumenta automaticamente, fino a un massimo
+di max(4·URF, 8), quando il residuo non decresce in modo soddisfacente, e lo
+riporta verso il valore assegnato quando la convergenza procede regolarmente.
+
+Ad ogni iterazione l'ampiezza del passo è ulteriormente limitata da una
+procedura di *line search* (dimezzamenti successivi fino a ottenere una
+riduzione del residuo) e da un vincolo di regione di fiducia sulle componenti
+di Δx.
+
+### 2.7.1 Criterio di convergenza
+
+La convergenza è dichiarata quando
+
+    max |F(x)| ≤ tol                                                      (2.14)
+
+cioè quando il massimo squilibrio di portata fra tutti i nodi è inferiore alla
+tolleranza assegnata. **La tolleranza è pertanto una portata**, espressa in
+Sm³/s: il valore di default 0,001 Sm³/s corrisponde a 3,6 Sm³/h di squilibrio
+massimo ammesso per nodo. Nel caso di verifica del §11 lo squilibrio residuo è
+esattamente di questo ordine di grandezza (§11.6), e questo spiega perché le
+portate restituite non chiudono il bilancio con precisione arbitraria.
+
+Se la (2.14) non è soddisfatta entro il numero massimo di iterazioni
+assegnato, il solutore restituisce l'ultimo iterato calcolato, segnalandolo
+come **soluzione non convergente**: si tratta di uno stato intermedio che non
+soddisfa i bilanci nodali e che non ha significato fisico (§7.5, §12).

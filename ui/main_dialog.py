@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QWidget, QToolButton,
+    QWidget, QToolButton, QStyle,
 )
 from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
 
@@ -18,12 +18,24 @@ register({
     },
     "main.close": {"it": "Chiudi", "en": "Close"},
     "main.menu_toggle": {"it": "Menu", "en": "Menu"},
-    "main.settings_button": {"it": "⚙  Impostazioni", "en": "⚙  Settings"},
-    "main.info_button": {"it": "ℹ  Info", "en": "ℹ  About"},
-    "main.guida_button": {"it": "📖  Guida", "en": "📖  Guide"},
+    "main.settings_button": {"it": "Impostazioni", "en": "Settings"},
+    "main.guida_button": {"it": "Guida", "en": "Guide"},
+    "main.info_button": {"it": "Info", "en": "About"},
+    "main.settings_tooltip": {
+        "it": "Lingua dell'interfaccia",
+        "en": "Interface language",
+    },
+    "main.guida_tooltip": {
+        "it": "Manuale d'uso completo, in sezioni navigabili",
+        "en": "Complete user manual, in navigable sections",
+    },
+    "main.info_tooltip": {
+        "it": "Versione, motore di calcolo, licenze",
+        "en": "Version, calculation engine, licences",
+    },
 })
 
-_SIDEBAR_WIDTH = 170
+_SIDEBAR_WIDTH = 190
 
 
 class GasNetSimMainDialog(QDialog):
@@ -75,23 +87,37 @@ class GasNetSimMainDialog(QDialog):
 
     def _build_sidebar(self):
         panel = QWidget()
+        # Il foglio di stile e' vincolato al solo pannello tramite selettore di
+        # objectName: senza selettore Qt lo propaga ai widget figli, i pulsanti
+        # perdono la cornice nativa (apparendo fusi fra loro) e mantengono il
+        # colore di testo del tema, illeggibile sul fondo cosi' imposto.
+        panel.setObjectName("gnsSidebar")
         panel.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 15); border-right: 1px solid rgba(0, 0, 0, 40);")
+            "#gnsSidebar { background-color: rgba(127, 127, 127, 28); "
+            "border-right: 1px solid rgba(127, 127, 127, 90); }")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
-        btn_settings = QPushButton(tr("main.settings_button"))
-        btn_settings.clicked.connect(self._open_settings)
-        layout.addWidget(btn_settings)
-
-        btn_guida = QPushButton(tr("main.guida_button"))
-        btn_guida.clicked.connect(self._open_guida)
-        layout.addWidget(btn_guida)
-
-        btn_info = QPushButton(tr("main.info_button"))
-        btn_info.clicked.connect(self._open_info)
-        layout.addWidget(btn_info)
+        style = self.style()
+        for key, tip, callback, icon in (
+                ("main.settings_button", "main.settings_tooltip",
+                 self._open_settings, QStyle.SP_FileDialogDetailedView),
+                ("main.guida_button", "main.guida_tooltip",
+                 self._open_guida, QStyle.SP_DialogHelpButton),
+                ("main.info_button", "main.info_tooltip",
+                 self._open_info, QStyle.SP_MessageBoxInformation)):
+            btn = QPushButton(tr(key))
+            btn.setToolTip(tr(tip))
+            # Icone del tema corrente: sempre disponibili, a differenza degli
+            # emoji, che dipendono dai font installati.
+            try:
+                btn.setIcon(style.standardIcon(icon))
+            except Exception:
+                pass
+            btn.setMinimumHeight(30)
+            btn.clicked.connect(callback)
+            layout.addWidget(btn)
 
         layout.addStretch()
         return panel

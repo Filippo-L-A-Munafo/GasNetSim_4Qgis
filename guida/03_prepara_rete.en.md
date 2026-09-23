@@ -1,142 +1,182 @@
-# Tab 1 — Prepare Network
+# 5. Tab 1 — Input data and field mapping
 
-This tab starts from the layers you **already** have in your QGIS project
-(pipes and nodes, with their attributes) and uses them to **create from
-scratch** two new CSV files — one for nodes, one for pipes — with the exact
-column names the GasNetSim calculation engine requires. The two CSVs don't
-exist beforehand: they are generated every time you press "Generate CSV",
-by reading data out of your layers.
+## 5.1 Principle
 
-For this to work, though, **your layers must already contain, in some
-field, all the necessary information**: an identifier for every pipe, which
-nodes it connects, its diameter, an identifier for every node, which nodes
-have a known pressure, and so on — even if those fields are named
-differently in your layer than GasNetSim's own names. This tab's job is
-exactly to tell the plugin **where to find** each piece of information in
-your layers (the so-called "field mapping"): it does not invent or infer
-data that isn't there. This is the most delicate phase of the workflow, for
-two distinct reasons: if you map the wrong field, the simulation can fail or
-produce wrong results without warning; and if a required piece of
-information is missing entirely from the layer (not present in any field),
-no mapping can "invent" it — you first need to add it as a new field in the
-layer's attribute table.
+This tab builds, from the vector layers of the QGIS project, the two files that
+constitute the solver input: `sf_nodes.csv` and `sf_pipelines.csv` (§5.8). The
+files are regenerated in full at every run; there are no pre-existing input
+files to select.
 
-## 1. Choosing the mode
+The required information must already be present in the layers, in fields of
+any name. Mapping consists in declaring the correspondence between layer fields
+and model quantities. The plugin does not infer missing quantities: in their
+absence it applies the fallback values of §6.2 and proceeds.
 
-At the top of the tab there is a "Network already collapsed" checkbox, which
-picks between two working modes.
-
-| Option | What happens |
-|--------|--------------|
-| **Unchecked (default) — Mode A** | You start from a "raw" pipe layer, with geometry exactly as imported from GIS (e.g. from OpenStreetMap, a survey, or a cadastre). The plugin performs a **topological collapse**: it figures out where pipes touch or come close to nodes, assigns a unique ID to every pipe and node, and generates the CSVs. |
-| **Checked — Mode B** | You use ready-made layers, where nodes and pipes already carry correctly-linked identifiers (`pipe_id`, `node_a`, `node_b`, `node_id`). The collapse step is skipped: you only map field names and export. |
-
-### What "topological collapse" is and why it's needed
-
-Raw GIS data (e.g. downloaded from OpenStreetMap or hand-digitised) often
-represents pipes as independent lines, without explicitly knowing which
-lines touch each other or where the network's nodes actually are. For the
-hydraulic calculation, however, we need to know precisely **which pipe
-connects which two nodes** (see "Basic physics concepts" → "The network as a
-graph"): without this information the mass-balance equations cannot be
-written.
-
-The "collapse" step analyses the geometries, decides which pipe endpoints
-correspond to the same physical point (within a distance tolerance), and
-builds the clean node/pipe graph the calculation then runs on.
-
-## 2. Mode A — Layers to Collapse
-
-Visible when the "Network already collapsed" checkbox is **unchecked**.
+## 5.2 Block 1 — Input Data
 
 | Field | Description |
 |-------|-------------|
-| **Pipe layer** | Linear vector layer (LineString / MultiLineString) with the raw pipes. From this the plugin automatically generates `pipe_id`, `node_a`, `node_b` and `length_m` (computed from the geometry itself). |
-| **Diameter field** | Field in the pipe layer holding the pipe's internal diameter. The plugin tries to auto-select it by looking for common names: `diameter_m`, `diam_m`, `D`, `d`, `diam`, `Diametro_pollici`, `Diametro`, `diameter`. |
-| **Diameter unit** | Unit the diameter field is expressed in: inches (in), metres (m) or centimetres (cm). The plugin automatically converts everything to metres before use. |
-| **DEM (optional)** | Digital Elevation Model raster layer (optional). If provided, the plugin automatically extracts each node's elevation by sampling the raster at that point (`altitude_m`). If not provided, every node's elevation is set to 0. |
-| **Node layer** | Point vector layer with the network's nodes (optional in this mode). If provided, it lets the plugin recognise which points are "reference" nodes (see below). |
-| **Reference field** | Field + value pair identifying reference nodes in the node layer (e.g. field `type` = `reference`, or field `matched` = `1`). See "Why the reference node is mandatory" below. |
-| **Node hourly flow** | Field in the node layer holding the hourly consumption profile (24 values in Sm³/h, separated by a chosen character). If nothing is selected, all nodes use the fixed "Placeholder flow" value (see Tab 2). |
-| **Snapping radius** | Maximum distance (in metres, in the layer's projection units) within which a node is linked to a pipe endpoint during collapse. Default: 50 m. |
-| **Add collapsed layers to project** | If checked, after collapsing the plugin adds the two resulting layers (nodes and pipes) to the QGIS project, so you can visually inspect them before simulating. |
+| **Pipeline layer** | Line layer. If the verification of §4 has been performed, use the corrected layer and not the original. |
+| **Node layer** | Point layer. Formally optional, substantially necessary: reference nodes and nodal demands derive from it. Without it the model has no boundary conditions. |
+| **DEM (raster)** | Digital elevation model, optional. Used to assign nodal elevations according to the rules of §5.4. |
+| **Output folder** | Destination of input files, results and persisted layers (§7.6). Single for the whole computation. Required for the *Generate CSV* command and for parallel execution. |
+| **Hour of day** | Hourly index 0–23 selecting the value to be extracted from the demand profile (§5.6). The label below reports the value read from the first node carrying a profile: it is the immediate check of correct interpretation of the field. |
+| **Simulate 24 hours in parallel (0-23)** | Simultaneous execution of the 24 hourly scenarios (§7.3). |
 
-### Why the "snapping radius" matters
+## 5.3 Block 2 — Model construction mode
 
-In real GIS data, two pipes that *should* meet at the same node often have
-slightly misaligned endpoints (digitising errors, different projections,
-rounding). The snapping radius tells the plugin "treat all endpoints within
-this distance as connected": too small, and nodes that should be connected
-stay separate (the network breaks into isolated pieces); too large, and
-nodes that are genuinely distinct in reality get merged by mistake. 50
-metres is a good starting point for transmission-scale data; for denser
-distribution networks it may be worth reducing it.
+The **Network already collapsed** checkbox determines whether the computational
+graph is to be built from the geometry (Mode A) or taken from the layers
+(Mode B).
 
-## 3. Mode B — Already Collapsed Layers
+### 5.3.1 Mode A — graph built from the geometry
 
-Visible when the "Network already collapsed" checkbox is **checked**.
+Active when the checkbox is cleared (default condition). The plugin performs
+the **topological collapse**: it explodes polylines, identifies coincident
+endpoints, generates the nodes, assigns identifiers and computes lengths from
+the three-dimensional geometry.
 
-| Field | Description |
-|-------|-------------|
-| **Pipe layer** | Already-collapsed pipe layer: must already have fields for pipe ID, node A, node B, length and diameter (even under different names — you'll map them in the next section). |
-| **Node layer** | Already-collapsed node layer: must already have fields for node ID, reference flag and flow. |
+Two layers, named `Condotte #N` and `Nodi #N`, are then added to the project;
+they constitute the network actually simulated.
 
-After picking both layers, two field-mapping sections appear (pipes and
-nodes), described below.
+**Behaviour to be known before adopting this mode:**
 
-## 4. Pipe Field Mapping (Mode B)
+1. **Node identifiers are generated by the plugin**, by means of a progressive
+   counter starting from **0** in the order endpoints are encountered while
+   scanning the pipelines. Any identifiers present in the node layer are **not
+   preserved**: they survive only in the `fid_ut` and `label_ut` fields of the
+   `Nodi #N` layer. The correspondence between one's own nodes and those of the
+   results must be reconstructed through those fields or geometrically.
+2. **Pipeline identifiers** are renumbered progressively from 1.
+3. **Elevations do not come from the node layer** (§5.4).
 
-| Interface field | Produced CSV field | Description |
-|-------------------|-----------------------|-------------|
-| **Pipe ID** | `pipe_id` | Unique pipe identifier. Auto-detected among: `pipe_id`, `id`, `FID`, `fid`, `OBJECTID`. |
-| **Node A** | `node_a` | ID of the inlet node (upstream, i.e. where the gas conventionally starts from). Auto: `node_a`, `from_node`, `inlet`, `a`, `start_node`. |
-| **Node B** | `node_b` | ID of the outlet node (downstream). Auto: `node_b`, `to_node`, `outlet`, `b`, `end_node`. |
-| **Length** | `length_m` | Pipe length in metres. Auto: `length_m`, `length`, `L`, `len`, `lunghezza`. |
-| **Diameter** | `diameter_m` | Internal diameter in metres (auto-converted if the unit differs). Auto: `diameter_m`, `diam_m`, `D`, `Diametro_pollici`, etc. |
-| **Diameter unit** | — | Unit of the chosen diameter field: `m`, `in`, `cm`. |
-
-> **Physics note**: the distinction between "Node A" and "Node B" does not
-> mean the gas must flow in that direction — it's just a labelling
-> convention. The calculation determines the actual flow direction on its
-> own; if gas flows from B to A, the result will simply show a negative flow
-> rate on that pipe (see the "Results — Pipes" section).
-
-## 5. Node Field Mapping (Mode B)
-
-| Interface field | Produced CSV field | Description |
-|-------------------|-----------------------|-------------|
-| **Node ID** | `node_id` | Unique node identifier. Auto: `node_id`, `id`, `FID`, `OBJECTID`. |
-| **Elevation** | `altitude_m` | Node elevation in metres above sea level. Auto: `altitude_m`, `z_m`, `elev`, `altitude`, `ALTITUDINE`. If the field is missing, 0 is used. |
-| **Reference flag** | `node_type` = `reference` | Field + value identifying nodes with a known, fixed pressure (see below). Auto field: `matched`, `type`, `is_ref`, `reference`, `nodo_tipo`. Default value: `1`. |
-| **Node hourly flow** | `flow_sm3_per_s` | Field with the hourly consumption profile: 24 Sm³/h values separated by a character (e.g. `;`), like `1.23;0.98;0.87;...`. The value for the hour chosen in "Hour of day" (Export Parameters) is used, converted to sm³/s. If nothing is selected, the "Placeholder flow" is used. |
-
-### Why the reference node is mandatory
-
-As explained in "Basic physics concepts", the network's system of equations
-needs at least one point with a **known absolute pressure** to have a unique
-solution (exactly like an electrical circuit needs a ground node). This is
-why **at least one reference node is mandatory**: if the plugin finds none in
-the node layer, it blocks the simulation before it even starts, with an
-error message in the Dashboard log. If your network has no explicit field
-marking reference nodes, you can quickly create one in the node layer's
-attribute table (e.g. an `is_ref` field set to 1 on the interconnection point
-with the upstream network).
-
-## 6. Export Parameters
+The **Collapse Options** box exposes:
 
 | Field | Description |
 |-------|-------------|
-| **Hour of day** | Hour of the day (0 to 23) used to extract the consumption value from each node's hourly profile. The panel shows a preview of the value that would be extracted from the first node with an available profile, so you can quickly verify it is being read correctly. |
-| **Flow separator** | Character separating the 24 values in the hourly profile field. Default: `;`. Other options: `,`, `\|`, `:`, space, tab. It must exactly match the format used in your data, otherwise the profile is not read correctly. |
-| **Output folder** | Folder where `sf_nodes.csv` and `sf_pipelines.csv` will be saved when you press "Generate CSV". |
+| **Diameter** and **Unit** | Pipeline-layer field holding the internal diameter and its unit: `inches (in)` — first entry, hence the default —, `metres (m)`, `centimetres (cm)`. Automatic field recognition proceeds in the order: `diameter_m`, `diam_m`, `D`, `d`, `diam`, `Diametro_pollici`, `Diametro`, `diameter`. Checking the unit is essential: by (2.5) the flow rate depends on D^2.5, so a unit error of factor 39.37 produces a discrepancy of about ten orders of magnitude in transport capacity. |
+| **Reference field** and value | Node-layer field and value identifying fixed-pressure nodes (for example `type` = `reference`, or `is_ref` = `1`). Candidates tried automatically: `matched`, `type`, `Type`, `NodeID`, `is_ref`, `reference`, `nodo_tipo`. Comparison is performed both textually and numerically. **If the value is left empty, all snapped nodes are treated as reference nodes**: the network then has pressure imposed everywhere and the results are meaningless (§12.5). |
 
-## 7. Action Buttons
+In Mode A the hourly demand field and the snap radius reside in the
+*⚙ Advanced options* block (§6.2).
 
-| Button | Action |
-|--------|--------|
-| **↺ Reload layers** | Refreshes all dropdown menus with the current list of layers loaded in the QGIS project (useful if you just added or removed a layer). |
-| **> Generate CSV** | Runs the collapse (in Mode A) and/or field mapping, then writes `sf_nodes.csv` and `sf_pipelines.csv` to the chosen output folder. Does not run the simulation: useful to check the CSVs before running the calculation. |
-| **>> Generate CSV and Simulate** | Does everything in one step: generates the CSVs in a temporary folder (without touching the permanent filesystem) and immediately runs the simulation. This is the fastest way to go from QGIS layers to results. |
+### 5.3.2 Mode B — graph taken from the layers
 
-The "Running the simulation" section further ahead in this Guide summarises
-all the (equivalent) ways to launch the calculation.
+Active when the checkbox is ticked. It assumes that each pipeline explicitly
+declares the two nodes it connects. This is the mode to be used when
+identifiers and elevations must be preserved, and the one adopted in the
+verification case of §11.
+
+The layers typically used are the `Condotte #N` and `Nodi #N` produced by a
+previous collapse, which the plugin preselects automatically, or layers
+prepared by the user with the required fields.
+
+## 5.4 Origin of nodal elevations
+
+The elevation h appearing in (2.8) is determined as follows.
+
+| Mode | Origin of the elevation |
+|------|--------------------------|
+| A, three-dimensional pipeline geometry (LineString Z) | Z coordinate of the vertices |
+| A, two-dimensional geometry, DEM assigned | Sampling of the DEM at the node coordinates |
+| A, two-dimensional geometry, no DEM | **h = 0 for all nodes**: term (2.8) vanishes |
+| A, *Preserve intermediate nodes* enabled | DEM sampling for every node, intermediate ones included (§6.2) |
+| B | Field mapped to *Elevation* (§5.5.2) |
+
+The node layer's elevation field **is not used in Mode A**. This deserves
+attention: a network with significant elevation differences simulated in Mode A
+without a DEM and with two-dimensional geometry returns pressures lacking the
+geodetic contribution, which at transmission pressures is of the order of
+0.1 bar per 100 m of elevation difference.
+
+## 5.5 Field mapping (Mode B)
+
+### 5.5.1 Pipelines
+
+| Interface field | Column produced | Automatic recognition |
+|-----------------|------------------|------------------------|
+| **Pipe ID** | `pipeline_index` | `pipe_id`, `id`, `FID`, `fid`, `OBJECTID` |
+| **Node A / B** | `inlet_index` / `outlet_index` | A: `node_a`, `from_node`, `inlet`, `a`, `start_node`; B: `node_b`, `to_node`, `outlet`, `b`, `end_node` |
+| **Length** | `length_m` | `length_m`, `length`, `L`, `len`, `lunghezza`, `lung_m` |
+| **Diameter** and unit | `diameter_m` | as in §5.3.1 |
+
+The A → B orientation is conventional (§2.1): the actual flow direction is
+returned through the sign of the flow rate (§10.2).
+
+### 5.5.2 Nodes
+
+| Interface field | Column produced | Notes |
+|-----------------|------------------|-------|
+| **Node ID** | `node_index` | Integer, consistent with the values used in Node A / Node B. Candidates: `node_id`, `id`, `FID`, `fid`, `OBJECTID`. |
+| **Elevation** | `altitude_m` | Candidates: `altitude_m`, `z_m`, `elev`, `altitude`, `alt`, `ALTITUDINE`, `quota`. If the field is absent, h = 0 is assumed. |
+| **Reference flag** and value | `node_type` = `reference` | Proposed value: `1`. |
+| **Hourly node flow** | `flow_sm3_per_s` | Demand profile (§5.6). If not assigned, all nodes receive the fallback value and the network has no demand. |
+
+## 5.6 Hourly demand profile
+
+**Format.** A string containing up to 24 numeric values separated by the
+character set in *Flow separator* (default `;`):
+
+```
+1250.0;1180.5;1100.2; … ;1310.8
+```
+
+**Unit.** Sm³/h. Conversion to model units is
+
+    D = value / 3600     [sm³/s]                                          (5.1)
+
+**Value selection.** The element whose index equals the *Hour of day* is
+extracted; if the string contains fewer values than the requested index, the
+last available one is used. **A single value is therefore valid for any hour**
+and represents a constant demand.
+
+**Sign convention.**
+
+| Value | Meaning | Effect |
+|-------|---------|--------|
+| > 0 | Withdrawal | D_i > 0 in (2.3) |
+| < 0 | Injection into the network | D_i < 0 in (2.3) |
+| 0, empty, `NULL` | Transit node | Assignment of the fallback value (§6.2) |
+
+The sign convention allows injection points (biomethane, electrolysers,
+interconnections) to be modelled without resorting to additional reference
+nodes, which would also impose the pressure.
+
+## 5.7 Per-node composition
+
+If the node layer contains a field named exactly **`gas_comp`**, its content is
+taken as the molar composition of that node, replacing the general composition
+(§6.4).
+
+The presence of at least one nodal composition activates the staggered coupling
+scheme described in §2.6, reported in the log as
+`Composizioni multiple rilevate`. In that case the results include the local
+composition (`gas_comp`) and the hydrogen fraction (`h2_pct`) node by node
+(§9.2).
+
+## 5.8 Structure of the input files produced
+
+Field separator `;`.
+
+**`sf_nodes.csv`**
+
+```
+node_index;pressure_pa;flow_MW;flow_sm3_per_s;altitude_m;temperature_k;gas_composition;node_type;latitude;longitude;flow_type
+1;7500000.0;;;10.0;288.15;{'methane': 0.86909, …};reference;;;volumetric
+2;;;1e-06;50.0;;;;;;volumetric
+3;;;3.33333333;120.0;;;;;;volumetric
+```
+
+Reference nodes carry pressure (gauge, cf. 2.2), temperature and composition;
+demand nodes carry flow rate and elevation.
+
+**`sf_pipelines.csv`**
+
+```
+pipeline_index;inlet_index;outlet_index;diameter_m;length_m;friction_method;roughness_m
+1;1;2;0.508;12000.0;chen;1.2e-05
+```
+
+Inspecting these two files after running the *Generate CSV* command is the most
+direct verification of correct mapping: an error present at this stage
+propagates unchanged to the results.

@@ -39,7 +39,7 @@ register({
         "it": "Crea layer colorato automaticamente se isole trovate",
         "en": "Automatically create a coloured layer if islands are found",
     },
-    "verifica.analyze_button": {"it": "\U0001f50d  Analizza rete", "en": "\U0001f50d  Analyze network"},
+    "verifica.analyze_button": {"it": "Analizza rete", "en": "Analyze network"},
     "verifica.select_bad_button": {"it": "⚠  Seleziona problematici", "en": "⚠  Select problem pipelines"},
     "verifica.select_bad_tooltip": {
         "it": "Seleziona nel layer condotte le pipe duplicate o sovrapposte\n"
@@ -96,14 +96,14 @@ register({
         "en": "Selects, in the source layer, the pipelines\n"
               "belonging to components disconnected from the main network.",
     },
-    "verifica.color_islands_button": {"it": "\U0001f3a8  Crea layer colorato", "en": "\U0001f3a8  Create coloured layer"},
+    "verifica.color_islands_button": {"it": "Crea layer colorato", "en": "Create coloured layer"},
     "verifica.color_islands_tooltip": {
         "it": "Crea un layer temporaneo in cui ogni isola\n"
               "è colorata con un colore diverso per distinguerle visivamente.",
         "en": "Creates a temporary layer where each island\n"
               "is coloured differently so they can be told apart visually.",
     },
-    "verifica.reanalyze_button": {"it": "\U0001f50d  Ri-analizza rete corrente", "en": "\U0001f50d  Re-analyze current network"},
+    "verifica.reanalyze_button": {"it": "Ri-analizza rete corrente", "en": "Re-analyze current network"},
     "verifica.reanalyze_tooltip": {
         "it": "Ri-analizza il layer risultato dell'ultimo snap (se esiste),\n"
               "altrimenti il layer selezionato nel combo condotte.\n"
@@ -113,7 +113,7 @@ register({
               "The combos stay editable to pick a different layer.",
     },
     "verifica.log_label": {"it": "Log:", "en": "Log:"},
-    "verifica.clear_log_action": {"it": "\U0001f5d1  Svuota log", "en": "\U0001f5d1  Clear log"},
+    "verifica.clear_log_action": {"it": "Svuota log", "en": "Clear log"},
     "verifica.overwrite_confirm_title": {
         "it": "Conferma modifica layer originale",
         "en": "Confirm original layer modification",

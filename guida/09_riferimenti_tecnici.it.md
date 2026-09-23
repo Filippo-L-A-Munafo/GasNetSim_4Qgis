@@ -1,118 +1,154 @@
-# Riferimenti tecnici e normativa
+# 13. Riferimenti tecnici e normativi
 
-Questa sezione raccoglie i valori di riferimento, le formule e le
-classificazioni normative usate come base per i parametri di default del
-plugin. È pensata come consultazione rapida, non richiede di essere letta
-tutta d'un fiato.
+## 13.1 Valori di default
 
-## Classificazione delle condotte per "specie" (D.M. 17/04/2008)
+| Parametro | Simbolo | Valore | Unità | § |
+|-----------|---------|--------|-------|---|
+| Pressione di riferimento | p_ref | 75,0 | bar relativi | 6.2 |
+| Temperatura | T | 288,15 | K | 6.2 |
+| Rugosità assoluta | ε | 1,2×10⁻⁵ | m | 6.2 |
+| Flusso placeholder | D_min | 1×10⁻⁴ | sm³/s | 6.2 |
+| Flusso minimo export | — | 1×10⁻⁶ | sm³/s | 6.2 |
+| Raggio di aggancio | r_s | 50,0 | m | 6.2 |
+| Decimali layer risultato | — | 4 | — | 6.2 |
+| Numero massimo di iterazioni | — | 50 | — | 6.3 |
+| Tolleranza | tol | 1×10⁻³ | Sm³/s | 6.3 |
+| Fattore di sotto-rilassamento | URF | 2,0 | — | 6.3 |
+| Composizione | — | SNAM Mazara del Vallo | — | 6.4 |
+| Correlazione d'attrito | — | Chen (1979) | — | 2.4.2 |
+| Equazione di stato | — | GERG-2008 | — | 2.5 |
+| Condizioni standard | T_b, p_b | 288,15 K; 101 325 Pa | — | 2.2 |
 
-Classificazione valida per le reti di **trasporto** (trasmissione) di gas
-naturale in Italia, in base alla Massima Pressione Operativa (MOP):
+### 13.1.1 Scala di auto-calibrazione
 
-| Specie | MOP (Pressione Max Esercizio) | Tipo di rete |
-|--------|-------------------------------|--------------|
-| **1a** | > 24 bar (2,4 MPa) | Rete Nazionale di Trasporto (RNT) |
-| **2a** | 12 bar < MOP ≤ 24 bar (1,2–2,4 MPa) | Rete Regionale di Trasporto (RRT) |
-| **3a** | 5 bar < MOP ≤ 12 bar (0,5–1,2 MPa) | Derivazioni d'utenza in alta pressione |
-| **4a** | 1,5 bar < MOP ≤ 5 bar (0,15–0,5 MPa) | Reti di distribuzione locale |
+| Numero di nodi | tol [Sm³/s] | URF [–] |
+|----------------|-------------|---------|
+| < 100 | 0,1 | 1,5 |
+| < 500 | 1,0 | 2,0 |
+| < 2000 | 5,0 | 2,5 |
+| ≥ 2000 | 10,0 | 3,0 |
 
-> Le simulazioni tipicamente condotte con questo plugin riguardano reti di
-> **1a e 2a specie** (RNT/RRT), con pressioni nell'ordine di 24–70 bar.
+In caso di mancata convergenza la scala è percorsa verso i valori più
+rilassati.
 
-## Velocità massima in condotta — formula di erosione (API RP 14E)
+## 13.2 Rugosità assoluta per materiale
 
-La velocità di erosione stima la soglia oltre la quale il flusso di gas ad
-alta velocità inizia a danneggiare (per erosione) le pareti interne della
-condotta, in particolare in presenza di particelle solide o liquide
-trascinate dal flusso:
+| Materiale | ε [m] |
+|-----------|-------|
+| Acciaio con rivestimento interno (trasporto) | 1,2×10⁻⁵ |
+| Acciaio non rivestito | 5×10⁻⁵ |
+| Polietilene (PE/HDPE) | 7×10⁻⁶ |
+| Ghisa | 2,6×10⁻⁴ |
 
-**Ve = C / √ρgas**
+### 13.2.1 Conversione delle unità di diametro
 
-dove:
+| Codice | Fattore verso il metro |
+|--------|-------------------------|
+| `m` | 1 |
+| `in` | 0,0254 |
+| `cm` | 0,01 |
 
-- **Ve** — velocità di erosione [m/s]
-- **ρgas** — densità del gas nelle condizioni operative [kg/m³]
-- **C = 100** — costante empirica per servizio continuo, gas secco (unità SI)
+## 13.3 Composizioni di riferimento
 
-Nota il comportamento: più il gas è denso (alte pressioni), **più bassa** è
-la velocità di erosione ammissibile — l'opposto di quanto si potrebbe
-intuire. Questo perché a parità di velocità, un gas più denso trasporta più
-quantità di moto e quindi più energia d'urto contro le pareti.
+Frazioni molari. Le due composizioni SNAM corrispondono ai principali punti di
+ingresso del sistema siciliano.
 
-### Stime indicative per metano (CH₄) a 15 °C
+| Componente | Mazara del Vallo (algerino) | Gela (libico) |
+|------------|------------------------------|----------------|
+| methane | 0,86909 | 0,86645 |
+| ethane | 0,08661 | 0,05246 |
+| propane | 0,01163 | 0,02022 |
+| isobutane | 0,00072 | 0,00317 |
+| butane | 0,00112 | 0,00478 |
+| isopentane | 0,00019 | 0,00071 |
+| pentane | 0,00019 | 0,00026 |
+| hexane | 0,00014 | 0,00060 |
+| nitrogen | 0,01334 | 0,04455 |
+| carbon dioxide | 0,01672 | 0,00602 |
+| helium | 0,00025 | 0,00078 |
 
-| Specie | MOP tipico | ρ CH₄ stimata | Ve (erosione) | Limite pratico |
-|--------|-----------|----------------|-----------------|----------------|
-| 1a | 60–70 bar | ~44–55 kg/m³ | ~10–13 m/s | ~10–15 m/s |
-| 1a | 24–40 bar | ~17–30 kg/m³ | ~13–18 m/s | ~15 m/s |
-| 2a | 12–24 bar | ~8–17 kg/m³ | ~18–24 m/s | ~15–20 m/s |
-| 3a | 5–12 bar | ~3,5–8 kg/m³ | ~24–35 m/s | rumore ~15 m/s |
-| 4a | 1,5–5 bar | ~1–3,5 kg/m³ | > 35 m/s | rumore ~10 m/s |
+Ulteriori preset: `{'methane': 1.0}`; `{'methane': 0.94, 'ethane': 0.04,
+'propane': 0.01, 'nitrogen': 0.01}`; `{'hydrogen': 1.0}`.
 
-> Per reti di trasmissione RNT Sicilia (60–70 bar), il limite pratico di
-> velocità è tipicamente **10–14 m/s**. I valori esatti derivati dagli
-> standard SNAM/Terna dovrebbero essere verificati caso per caso.
+Parametri di default delle stazioni di compressione: rapporto di compressione
+1,1; rendimento 0,85; processo isentropico.
 
-## Composizioni gas supportate
+## 13.4 Classificazione delle condotte e qualità del gas
 
-Componenti riconosciuti dal motore di calcolo (chiavi del dizionario Python
-usato nel campo "Composizione"):
+### 13.4.1 Specie (D.M. 17/04/2008)
 
-| Chiave | Componente |
-|--------|------------|
-| `methane` | Metano (CH₄) |
-| `ethane` | Etano (C₂H₆) |
-| `propane` | Propano (C₃H₈) |
-| `butane` | Butano (C₄H₁₀) |
-| `nitrogen` | Azoto (N₂) |
-| `carbon_dioxide` | Anidride carbonica (CO₂) |
-| `hydrogen` | Idrogeno (H₂) |
+| Specie | MOP | Tipologia di rete |
+|--------|-----|--------------------|
+| 1ª | > 24 bar | Rete nazionale di trasporto |
+| 2ª | 12 < MOP ≤ 24 bar | Rete regionale di trasporto |
+| 3ª | 5 < MOP ≤ 12 bar | Derivazioni di utenza in alta pressione |
+| 4ª | 1,5 < MOP ≤ 5 bar | Distribuzione locale |
 
-### Preset disponibili nel plugin
+### 13.4.2 Vincolo di densità relativa
 
-```
-# Gas naturale puro
-{'methane': 1.0}
+La normativa italiana sulla qualità del gas immesso nelle reti di trasporto
+fissa un limite inferiore alla densità relativa, d ≥ 0,555. Poiché l'idrogeno
+riduce sensibilmente SG (§9.3), tale vincolo — e non il potere calorifico —
+determina di norma la frazione massima miscelabile. Per il gas algerino di
+Mazara del Vallo il limite è raggiunto in corrispondenza di una frazione molare
+di idrogeno pari a circa **13,9 %**, valore adottato nei dati di esempio
+distribuiti con il plugin.
 
-# Gas naturale tipico (rete italiana)
-{'methane': 0.94, 'ethane': 0.04, 'propane': 0.01, 'nitrogen': 0.01}
+> I riferimenti normativi riportati hanno valore orientativo e vanno verificati
+> sulla fonte vigente prima di qualsiasi utilizzo in sede formale.
 
-# Mix idrogeno 10%
-{'methane': 0.90, 'hydrogen': 0.10}
+## 13.5 Velocità limite per erosione
 
-# Mix idrogeno 20%
-{'methane': 0.80, 'hydrogen': 0.20}
+Criterio API RP 14E:
 
-# Mix idrogeno 50%
-{'methane': 0.50, 'hydrogen': 0.50}
+    v_e = C / √ρ                                                         (13.1)
 
-# Idrogeno puro
-{'hydrogen': 1.0}
-```
+con v_e velocità di erosione [m/s], ρ densità del gas nelle condizioni
+operative [kg/m³], C = 100 in unità SI per servizio continuo con gas secco.
 
-## Parametri del solutore — valori di riferimento
+La (13.1) implica che la velocità ammissibile **decresca** al crescere della
+densità, e quindi della pressione di esercizio.
 
-| Parametro | Default plugin | Note |
-|-----------|----------------|------|
-| Max iterazioni | 50 | Aumentare a 100–200 per reti complesse |
-| Tolleranza | 1,0 | Nelle unità interne del solutore |
-| URF | 2,0 | Under-relaxation factor |
-| Pressione reference | 70 bar | Tipica per RNT Sicilia |
-| Temperatura reference | 300 K (27 °C) | |
-| Rugosità condotte | 5×10⁻⁵ m | Acciaio. PE/HDPE: 7×10⁻⁶ m; ghisa: 2,6×10⁻⁴ m |
+| Specie | MOP | ρ stimata [kg/m³] | v_e [m/s] | Limite pratico [m/s] |
+|--------|-----|--------------------|-----------|-----------------------|
+| 1ª | 60–70 bar | 44–55 | 10–13 | 10–15 |
+| 1ª | 24–40 bar | 17–30 | 13–18 | ≈ 15 |
+| 2ª | 12–24 bar | 8–17 | 18–24 | 15–20 |
+| 3ª | 5–12 bar | 3,5–8 | 24–35 | ≈ 15 (rumore) |
+| 4ª | 1,5–5 bar | 1–3,5 | > 35 | ≈ 10 (rumore) |
 
-## Unità di diametro supportate
+## 13.6 Formato dei file
 
-| Codice | Fattore di conversione a metri |
-|--------|----------------------------------|
-| `m` | × 1 |
-| `in` | × 0,0254 |
-| `cm` | × 0,01 |
+Separatore di campo `;` per tutti i file prodotti e letti dal solutore.
 
-## Reti di riferimento già testate con il plugin
+**`sf_nodes.csv`** — `node_index`, `pressure_pa`, `flow_MW`, `flow_sm3_per_s`,
+`altitude_m`, `temperature_k`, `gas_composition`, `node_type`, `latitude`,
+`longitude`, `flow_type`.
 
-| Rete | Nodi | Condotte | Pressione | Esito |
-|------|------|----------|-----------|-------|
-| RRT Trapani | 7 | 6 | 70 bar | Convergenza in 4 iterazioni, ~7,7 s |
-| RNT Sicilia | — | — | 24–25 bar | Convergenza OK (pressioni 24,08–25,33 bar) |
+**`sf_pipelines.csv`** — `pipeline_index`, `inlet_index`, `outlet_index`,
+`diameter_m`, `length_m`, `friction_method`, `roughness_m`.
+
+**`sf_compressors.csv`** — `compressor_index`, `inlet`, `outlet`,
+`compression_ratio`, `efficiency`, `thermodynamic_process`, `control_mode`,
+`p_out_target`.
+
+**`results_nodes.csv`**, **`results_pipes.csv`**, **`results_compressors.csv`**
+— campi descritti ai §9 e §10.
+
+## 13.7 Riferimenti bibliografici e normativi
+
+1. Chen N.H. (1979). *An Explicit Equation for Friction Factor in Pipe*.
+   Industrial & Engineering Chemistry Fundamentals, 18(3), 296–297.
+2. ISO 20765-2:2015. *Natural gas — Calculation of thermodynamic properties —
+   Part 2: Single-phase properties (gas, liquid, and dense fluid) for extended
+   ranges of application* (equazione di stato GERG-2008).
+3. UNI EN ISO 13443. *Gas naturale — Condizioni di riferimento standard*.
+4. API RP 14E. *Recommended Practice for Design and Installation of Offshore
+   Production Platform Piping Systems*.
+5. EN 16726. *Gas infrastructure — Quality of gas — Group H*.
+6. D.M. 17 aprile 2008. *Regola tecnica per la progettazione, costruzione,
+   collaudo, esercizio e sorveglianza delle opere e degli impianti di trasporto
+   di gas naturale con densità non superiore a 0,8*.
+7. Lu Y. et al. *GasNetSim* — Forschungszentrum Jülich, ICE-1: Energy Systems
+   Engineering. Licenza MPL-2.0.
+   https://jugit.fz-juelich.de/iek-10/public/simulation/gasnetsim

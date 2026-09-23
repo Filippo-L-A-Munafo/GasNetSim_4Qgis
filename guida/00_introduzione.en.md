@@ -1,75 +1,85 @@
-# Introduction
+# 1. Introduction and scope
 
-## What GasNetSim 4Qgis is
+## 1.1 Subject
 
-GasNetSim 4Qgis is a QGIS plugin that calculates **how a gas transmission or
-distribution network behaves**: how much pressure there is at every point of
-the network, how much gas flows through each pipe and at what speed — starting
-simply from the geographic data you already have in QGIS (pipelines drawn as
-lines, nodes as points).
+GasNetSim 4Qgis is a QGIS plugin that solves the steady-state hydraulic
+problem of a natural gas transmission network, optionally blended with
+hydrogen, starting from the vector representation of the network held in a
+QGIS project.
 
-In practice the plugin bridges two worlds:
+The plugin acts as the geospatial interface to the **GasNetSim** solver
+(Forschungszentrum Jülich, ICE-1) and extends it with compressor station
+handling, parallel execution of hourly scenarios, and cartographic rendering of
+the results.
 
-- **QGIS**, where the network is made of geometries (lines and points) with
-  attributes;
-- **GasNetSim**, the calculation engine that solves the physics equations for
-  gas flow and returns pressures and flow rates.
+## 1.2 Model solved
 
-The plugin handles all the "boring" part — translating the GIS layers into
-the format the calculation engine expects, running the calculation, and
-redrawing the results as new coloured layers — so the user can focus on their
-network's data and on interpreting the results.
+The model is **nodal**, **steady-state** and **isothermal**, with a real-gas
+equation of state. The unknowns are the nodal pressures; flow rates, velocities
+and thermophysical properties are derived quantities.
 
-## What it is used for, in practice
+The complete formulation, with the equations as implemented, is given in §2. In
+summary the model comprises:
 
-Simulating a gas network before acting in the field lets you answer questions
-such as:
+- a mass balance at each demand node;
+- the general flow equation for each pipeline, with the friction factor from
+  the explicit correlation of Chen (1979);
+- a geodetic elevation correction term;
+- the **GERG-2008** equation of state (ISO 20765-2) for compressibility factor,
+  density and heat capacities;
+- composition tracking where gases of different composition are injected.
 
-- If I increase demand in one area, does pressure stay above the guaranteed
-  minimum, or is there a risk of dropping below the threshold?
-- Can an existing pipe carry more gas, or does it need to be replaced or
-  duplicated?
-- What happens if I inject a hydrogen/methane blend into the network instead
-  of pure natural gas (H₂/CH₄ blending)?
-- Where are the most critical points in the network (too-high velocities,
-  excessive pressure losses)?
+## 1.3 Range of validity and limitations
 
-Without a simulator, answering these questions would require field
-measurements or very laborious manual calculations; the plugin automates
-them starting from data you probably already have in a QGIS project.
+| Aspect | Scope |
+|--------|-------|
+| Regime | Steady state. Transients are not modelled: each run describes the asymptotic state of the network at constant demand. |
+| Temperature | Uniform and prescribed. The thermal balance along pipelines is not solved. |
+| Phase | Single-phase gas. Condensates and two-phase transport are not treated. |
+| Pressures | Verified on 1st and 2nd class networks (24–75 barg). The formulation imposes no explicit pressure limits. |
+| Components | Pipelines, demand and injection nodes, fixed-pressure nodes, compressor stations. Control valves, regulators and storage are not exposed by the interface. |
+| Optimisation | Not provided. The plugin solves the configuration supplied; it does not search for an optimal one. |
 
-## The two-phase workflow
+Beyond the topological checks of §4, the plugin performs no plausibility
+checking of the input data: missing values are replaced by the fallback values
+documented in §6.2 and the computation proceeds. Ensuring the physical
+consistency of the data remains the user's responsibility.
 
-The plugin is organised into two phases, matching the two tabs of the main
-window:
+## 1.4 Typical applications
 
-1. **Prepare Network** (Tab 1) — here you tell the plugin *which* QGIS layers
-   represent your network and *how* to read their fields (which field is the
-   diameter, which one identifies nodes with a known pressure, etc.). The
-   output of this phase is two CSV files — one for nodes, one for pipes — in
-   the format the calculation engine understands.
-2. **Simulate** (Tab 2) — here you set the physical parameters (reference
-   pressure, temperature, gas composition) and the solver parameters
-   (tolerance, number of iterations), then run the actual simulation. At the
-   end, the plugin automatically creates two new colour-coded layers in QGIS
-   with the results (pressures on nodes, flow rates and velocities on pipes).
+1. **Adequacy assessment**: determination of pressures at delivery points for a
+   given hourly demand profile, and comparison against contractual minima.
+2. **Hydrogen blending analysis**: assessment of the effect of a molar fraction
+   of H₂ on pressures, velocities, heating value, specific gravity and Wobbe
+   index, for verification of gas quality constraints (§13.4).
+3. **Reinforcement sizing**: comparison of alternative network configurations
+   at equal demand.
+4. **Multi-scenario campaigns**: automatic execution of 24 hourly scenarios, or
+   of a series of days, with systematic collection of results.
 
-The following sections of this Guide follow exactly this structure: first a
-few physics concepts useful to understand *why* certain fields exist
-("Basic physics concepts" section), then an explanation of every single
-interface element, tab by tab.
+## 1.5 Processing architecture
 
-## Who this guide is for
+The workflow is organised in three stages, matching the three tabs of the
+interface:
 
-This guide is written for someone who is **neither a gas-network expert nor a
-QGIS expert**: every function is explained both from a practical point of view
-("what do I write in this field") and from a physical point of view ("why
-this data is needed for the calculation, and what it physically represents").
-If you are already an expert in one of the two fields, feel free to jump
-straight to the section you need using the list on the left.
+| Stage | Tab | Content |
+|-------|-----|---------|
+| Topological verification | Tab 0 | Connectivity analysis of the pipeline layer, detection of degenerate geometries, duplicates and disconnected components; correction by endpoint snapping (§4). |
+| Case definition and execution | Tab 1 | Association of layer fields with model quantities, assignment of physical and numerical parameters, generation of the input files and execution of the solver (§5, §6, §7). |
+| Post-processing | Tab 2 | Thematic rendering of results and export (§8). |
 
-## How to use this Guide
+The order 0 → 1 → 2 is operational rather than indicative: omitting the
+preliminary topological verification is the most frequent cause of
+non-convergence on vector data not prepared for computation (§12.6).
 
-Use the list on the left to jump directly to the section you need. This
-Guide is separate from the **ℹ About** button, which instead shows the
-plugin version, author and licensing information.
+## 1.6 Structure of this document
+
+§2–§3 describe the model and the organisation of the interface; §4–§8 document
+every exposed control, tab by tab; §9–§10 define the quantities returned; §11
+presents a **reproducible verification case**, with the expected numerical
+values, to be run in order to validate the installation; §12 collects
+convergence diagnostics; §13–§14 contain technical and regulatory references
+and the nomenclature.
+
+Quantities are denoted by the symbols and units adopted in §14. Equations are
+numbered by section and referenced in the text.

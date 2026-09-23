@@ -1,7 +1,7 @@
 {
   "title": "GasNetSim_4Qgis: An Open-Source 3D Geospatial Digital Twin Framework for Regional Gas Transmission and Hydrogen Blending",
-  "description": "A high-fidelity geospatial and thermo-fluid-dynamic digital twin plugin for QGIS coupling GIS vector processing with the GasNetSim matrix solver. Supports 3D geodesic elevation modeling (DEM), explicit Chen (1979) friction transitions, full GERG-2008 real-gas thermodynamics (ISO 20765-2), and multicore parallel simulation of large-scale hydrogen blending roadmaps.",
-  "version": "1.0.0",
+  "description": "A high-fidelity geospatial and thermo-fluid-dynamic digital twin plugin for QGIS coupling GIS vector processing with the GasNetSim matrix solver. Supports 3D geodesic elevation modeling (DEM), explicit Chen (1979) friction transitions, full GERG-2008 real-gas thermodynamics (ISO 20765-2), and multicore parallel simulation of large-scale hydrogen blending roadmaps. Version 0.9.0 adds a built-in bilingual user Guide (IT/EN) documenting every interface control and the underlying physics. The plugin version is independent of that of the GasNetSim engine: the engine version and commit actually used are recorded alongside every result set.",
+  "version": "0.9.0",
   "license": "MIT",
   "upload_type": "software",
   "access_right": "open",

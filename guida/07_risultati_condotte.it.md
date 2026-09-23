@@ -1,45 +1,85 @@
-# Risultati — Condotte
+# 10. Grandezze calcolate sulle condotte e sui compressori
 
-Al termine della simulazione, il plugin crea un layer lineare chiamato
-`[Risultati] Condotte — <nome_layer>`. Questa sezione spiega il significato
-fisico di ogni campo.
+## 10.1 Grandezze sulle condotte
 
-| Campo | Unità | Significato |
+Contenute nel layer `R-P-<nome> #N` e nel file `results_pipes.csv`.
+
+| Campo | Simbolo | Unità | Definizione |
+|-------|---------|-------|-------------|
+| `flow_sm3h` | Q | Smc/h | Portata volumetrica in condizioni standard, **con segno** (§10.2). Ottenuta dalla (2.4). |
+| `flow_abs_sm3h` | \|Q\| | Smc/h | Modulo della portata. Campo di default per la colorazione e per la modulazione dello spessore della linea. |
+| `velocity_m_s` | v | m/s | Velocità media del gas nelle condizioni operative, sempre positiva (§10.3). |
+| `avg_pressure_bar` | — | bar (assoluti) | Media aritmetica delle pressioni ai due estremi. Si noti che non coincide con la pressione media (2.7) impiegata internamente per la valutazione delle proprietà. |
+| `sp_gravity` | SG | — | Densità relativa della miscela nella condotta. |
+| `z_factor` | Z | — | Fattore di comprimibilità medio. |
+| `density_kg_m3` | ρ | kg/m³ | Densità media nelle condizioni operative del tratto. |
+
+## 10.2 Convenzione di segno e verso del flusso
+
+L'orientamento A → B è assegnato in fase di costruzione del modello (§2.1) e
+non presuppone alcuna conoscenza del funzionamento della rete. Il verso
+effettivo discende dalla soluzione:
+
+    Q > 0  →  flusso da A verso B
+    Q < 0  →  flusso da B verso A
+
+L'inversione di segno di una condotta fra due scenari costituisce un risultato
+di interesse: individua i tratti alimentati da direzioni diverse al variare
+delle condizioni di esercizio, informazione rilevante nella valutazione di
+nuovi punti di immissione.
+
+La rappresentazione con frecce (§8.1) segue il segno di `flow_sm3h`.
+
+## 10.3 Velocità
+
+La velocità non è ottenibile dividendo la portata standard per la sezione: la
+portata è riferita alle condizioni (2.1), mentre il gas transita nelle
+condizioni operative. La conversione richiede la densità locale, funzione di
+p, T e composizione attraverso l'equazione di stato (§2.5).
+
+Alle pressioni di trasporto, valori dell'ordine di 0,3–10 m/s corrispondono a
+portate di decine di migliaia di Smc/h. Il confronto con i limiti di erosione
+è trattato al §13.5; si richiama che la velocità ammissibile **decresce** al
+crescere della pressione, essendo il gas più denso.
+
+Velocità dell'ordine di 10⁻³ m/s diffuse sull'intera rete indicano di norma
+domande non acquisite (§12.7).
+
+## 10.4 Grandezze sulle stazioni di compressione
+
+Contenute in `results_compressors.csv`, prodotto quando la rete comprende
+stazioni di compressione (§6.1).
+
+| Campo | Unità | Definizione |
 |-------|-------|-------------|
-| `flow_sm3s` | Smc/h | Portata volumetrica **con segno**. Positiva = il gas scorre da Nodo A verso Nodo B (la direzione "convenzionale" scelta in fase di mappatura); negativa = il gas scorre in verso opposto, da B verso A. Le frecce direzionali sulla mappa riflettono automaticamente questo segno. |
-| `flow_abs_sm3s` | Smc/h | Portata volumetrica in **valore assoluto** (senza segno). Usata anche per determinare lo spessore della linea sulla mappa: condotte con portata maggiore vengono disegnate più spesse, per far risaltare visivamente i "collettori principali" della rete. |
-| `velocity_m_s` | m/s | Velocità media del gas nella condotta, calcolata tenendo conto della comprimibilità reale del gas (non è semplicemente portata/sezione — vedi "Concetti fisici di base" → "Velocità"). Il valore è sempre positivo (è un modulo, indipendente dal verso del flusso). |
-| `avg_pressure_bar` | bar | Pressione media lungo la condotta, calcolata come media tra le pressioni ai due nodi estremi. Utile come stima rapida delle condizioni operative "tipiche" in quella condotta (per esempio per stimare la densità media del gas che ci scorre). |
-| `sp_gravity` | — | Specific gravity della miscela di gas nella condotta (media tra i due estremi). Vedi la sezione "Risultati — Nodi" per il significato fisico. |
-| `z_factor` | — | Fattore di comprimibilità Z medio nella condotta. Vedi "Risultati — Nodi". |
-| `density_kg_m3` | kg/m³ | Densità media del gas nelle condizioni operative della condotta (pressione e temperatura medie). |
+| `compressor_index` | — | Identificativo della stazione. |
+| `inlet_node` / `outlet_node` | — | Nodi di aspirazione e di mandata; il secondo è generato dallo sdoppiamento del nodo marcato (§6.1.1). |
+| `inlet_pressure_bar` / `outlet_pressure_bar` | bar (assoluti) | Pressioni a convergenza. |
+| `compression_ratio` | — | Rapporto effettivo r = p_out / p_in. Un valore prossimo all'unità indica che la stazione non sta comprimendo. |
+| `flow_sm3h` | Smc/h | Portata elaborata. |
+| `mass_flow_kg_s` | kg/s | Portata massica, ṁ = ρ_b · Q. |
+| `power_MW` | MW | Potenza isentropica assorbita, eq. (6.1). Nulla per r ≤ 1. |
+| `energy_MWh` | MWh | Energia corrispondente all'ora simulata. |
 
-## Perché la portata può essere negativa
+La potenza assorbita è calcolata **esclusivamente a convergenza raggiunta**:
+in una cartella `_NONCONV` i valori relativi ai compressori sono privi di
+significato.
 
-Nella mappatura dei campi (Tab 1), "Nodo A" e "Nodo B" sono solo
-un'etichetta arbitraria assegnata durante il collasso o l'importazione dei
-dati — non indicano necessariamente il verso reale del flusso. Il motore di
-calcolo determina il verso effettivo in base alle pressioni calcolate: il
-gas scorre sempre dal punto a pressione più alta verso quello a pressione
-più bassa. Se questo verso coincide con "da A verso B", la portata è
-positiva; se è l'opposto, la portata è negativa. Questo è del tutto normale,
-specialmente in reti magliate (con più percorsi possibili tra due punti) o
-quando cambiano le condizioni di domanda.
+## 10.5 Verifiche di coerenza
 
-## Le frecce di direzione del flusso
+**Bilancio ai nodi.** In un nodo di derivazione la portata della condotta di
+monte deve eguagliare la somma delle portate di valle, a meno della domanda
+nodale e dello squilibrio residuo ammesso dalla tolleranza (2.14). Lo
+scostamento atteso è dell'ordine di tol × 3600 Smc/h: con il valore di default
+esso vale 3,6 Smc/h, del tutto trascurabile su portate di decine di migliaia di
+Smc/h ma non nullo. Il §11.6 riporta un esempio quantitativo di tale verifica.
 
-Se l'opzione è attiva (Tab 2 → Visualizzazione Risultati), ogni condotta ha
-un piccolo marcatore triangolare disegnato al centro della sua geometria e
-orientato nel verso reale in cui scorre il gas — non nel verso "geometrico"
-originale del layer, ma in quello determinato dal segno di `flow_sm3s`. È il
-modo più rapido per farsi un'idea visiva di come il gas si distribuisce in
-una rete complessa, per esempio per individuare punti di alimentazione
-multipla o inversioni di flusso rispetto a condizioni di esercizio abituali.
+**Continuità delle proprietà.** In assenza di immissioni multiple, `sp_gravity`
+e le altre grandezze di composizione devono risultare costanti su tutte le
+condotte. Variazioni indicano la presenza di composizioni nodali non
+intenzionali (§5.7).
 
-## Velocità e limiti di erosione
-
-La `velocity_m_s` va confrontata con i limiti pratici di velocità per
-evitare rumore eccessivo ed erosione delle pareti interne della condotta.
-La sezione "Riferimenti tecnici e normativa" di questa Guida riporta la
-formula di erosione (API RP 14E) e alcuni valori indicativi per le diverse
-categorie di condotte in pressione.
+**Congruenza con le perdite di carico.** A parità di portata, condotte di
+diametro maggiore devono presentare cadute di pressione sensibilmente minori,
+essendo C_p ∝ D^2,5 nella (2.5). Andamenti contrari segnalano di norma errori
+nell'unità del diametro (§12.8).

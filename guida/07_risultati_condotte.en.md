@@ -1,45 +1,84 @@
-# Results — Pipes
+# 10. Pipeline and compressor quantities
 
-At the end of the simulation, the plugin creates a line layer called
-`[Results] Pipes — <layer_name>`. This section explains the physical meaning
-of each field.
+## 10.1 Pipeline quantities
 
-| Field | Unit | Meaning |
-|-------|------|---------|
-| `flow_sm3s` | Sm³/h | **Signed** volumetric flow rate. Positive = gas flows from Node A to Node B (the "conventional" direction chosen during mapping); negative = gas flows the other way, from B to A. The direction arrows on the map automatically reflect this sign. |
-| `flow_abs_sm3s` | Sm³/h | Volumetric flow rate in **absolute value** (unsigned). Also used to set the line thickness on the map: pipes with a higher flow rate are drawn thicker, visually highlighting the network's "main trunks". |
-| `velocity_m_s` | m/s | Average gas velocity in the pipe, computed accounting for the gas's real compressibility (it is not simply flow rate / area — see "Basic physics concepts" → "Velocity"). The value is always positive (it's a magnitude, independent of flow direction). |
-| `avg_pressure_bar` | bar | Average pressure along the pipe, computed as the average of the pressures at its two end nodes. Useful as a quick estimate of the "typical" operating conditions in that pipe (e.g. to estimate the average density of the gas flowing through it). |
-| `sp_gravity` | — | Specific gravity of the gas mixture in the pipe (average of the two ends). See "Results — Nodes" for the physical meaning. |
-| `z_factor` | — | Average compressibility factor Z in the pipe. See "Results — Nodes". |
-| `density_kg_m3` | kg/m³ | Average gas density at the pipe's operating conditions (average pressure and temperature). |
+Contained in the `R-P-<name> #N` layer and in the `results_pipes.csv` file.
 
-## Why the flow rate can be negative
+| Field | Symbol | Unit | Definition |
+|-------|--------|------|------------|
+| `flow_sm3h` | Q | Sm³/h | Volumetric flow rate at standard conditions, **signed** (§10.2). Obtained from (2.4). |
+| `flow_abs_sm3h` | \|Q\| | Sm³/h | Magnitude of the flow rate. Default field for colouring and for modulating line width. |
+| `velocity_m_s` | v | m/s | Average gas velocity at operating conditions, always positive (§10.3). |
+| `avg_pressure_bar` | — | bar (absolute) | Arithmetic mean of the pressures at the two ends. Note that it does not coincide with the average pressure (2.7) used internally for property evaluation. |
+| `sp_gravity` | SG | — | Specific gravity of the mixture in the pipeline. |
+| `z_factor` | Z | — | Average compressibility factor. |
+| `density_kg_m3` | ρ | kg/m³ | Average density at the operating conditions of the stretch. |
 
-In field mapping (Tab 1), "Node A" and "Node B" are just an arbitrary label
-assigned during collapse or data import — they don't necessarily indicate
-the actual flow direction. The calculation engine determines the actual
-direction from the computed pressures: gas always flows from the
-higher-pressure point towards the lower-pressure one. If this direction
-matches "from A to B", the flow rate is positive; if it's the opposite, the
-flow rate is negative. This is completely normal, especially in meshed
-networks (with several possible paths between two points) or when demand
-conditions change.
+## 10.2 Sign convention and flow direction
 
-## Flow direction arrows
+The A → B orientation is assigned during model construction (§2.1) and presumes
+no knowledge of how the network operates. The actual direction follows from the
+solution:
 
-If this option is enabled (Tab 2 → Result Visualisation), every pipe gets a
-small triangular marker drawn at the centre of its geometry, oriented in the
-actual direction the gas flows — not the layer's original "geometric"
-direction, but the one determined by the sign of `flow_sm3s`. This is the
-quickest way to get a visual sense of how gas distributes across a complex
-network, for example to spot multi-feed points or flow reversals relative to
-usual operating conditions.
+    Q > 0  →  flow from A to B
+    Q < 0  →  flow from B to A
 
-## Velocity and erosion limits
+A change in the sign of a pipeline between two scenarios is a result of
+interest: it identifies stretches supplied from different directions as
+operating conditions change, information relevant when assessing new injection
+points.
 
-`velocity_m_s` should be compared against practical velocity limits to avoid
-excessive noise and erosion of the pipe's internal walls. The "Technical
-references & standards" section of this Guide gives the erosion formula
-(API RP 14E) and some indicative values for different categories of
-pressurised pipes.
+The arrow rendering (§8.1) follows the sign of `flow_sm3h`.
+
+## 10.3 Velocity
+
+Velocity cannot be obtained by dividing the standard flow rate by the
+cross-sectional area: the flow rate refers to conditions (2.1), whereas the gas
+travels at operating conditions. The conversion requires the local density, a
+function of p, T and composition through the equation of state (§2.5).
+
+At transmission pressures, values of the order of 0.3–10 m/s correspond to flow
+rates of tens of thousands of Sm³/h. Comparison with erosion limits is covered
+in §13.5; it is recalled that the allowable velocity **decreases** as pressure
+increases, the gas being denser.
+
+Velocities of the order of 10⁻³ m/s across the whole network normally indicate
+that demands have not been acquired (§12.7).
+
+## 10.4 Compressor station quantities
+
+Contained in `results_compressors.csv`, produced when the network includes
+compressor stations (§6.1).
+
+| Field | Unit | Definition |
+|-------|------|------------|
+| `compressor_index` | — | Station identifier. |
+| `inlet_node` / `outlet_node` | — | Suction and discharge nodes; the latter is generated by splitting the marked node (§6.1.1). |
+| `inlet_pressure_bar` / `outlet_pressure_bar` | bar (absolute) | Pressures at convergence. |
+| `compression_ratio` | — | Effective ratio r = p_out / p_in. A value close to unity indicates that the station is not compressing. |
+| `flow_sm3h` | Sm³/h | Flow handled. |
+| `mass_flow_kg_s` | kg/s | Mass flow rate, ṁ = ρ_b · Q. |
+| `power_MW` | MW | Isentropic power absorbed, eq. (6.1). Zero for r ≤ 1. |
+| `energy_MWh` | MWh | Energy corresponding to the simulated hour. |
+
+Absorbed power is computed **only when convergence has been reached**: in a
+`_NONCONV` folder the compressor values are meaningless.
+
+## 10.5 Consistency checks
+
+**Nodal balance.** At a branching node the flow of the upstream pipeline must
+equal the sum of the downstream flows, net of the nodal demand and of the
+residual imbalance permitted by tolerance (2.14). The expected discrepancy is
+of the order of tol × 3600 Sm³/h: with the default value it amounts to
+3.6 Sm³/h, entirely negligible against flows of tens of thousands of Sm³/h but
+not zero. §11.6 provides a quantitative example of this check.
+
+**Continuity of properties.** In the absence of multiple injections,
+`sp_gravity` and the other composition-dependent quantities must be constant
+across all pipelines. Variations indicate the presence of unintended nodal
+compositions (§5.7).
+
+**Consistency with pressure losses.** At equal flow rate, larger-diameter
+pipelines must exhibit appreciably smaller pressure drops, since C_p ∝ D^2.5 in
+(2.5). Contrary behaviour normally indicates errors in the diameter unit
+(§12.8).

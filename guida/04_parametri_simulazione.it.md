@@ -1,97 +1,120 @@
-# Tab 2 — Parametri Simulazione
+# 6. Tab 1 — Parametri fisici e numerici
 
-Questa scheda imposta i parametri fisici e numerici usati dal motore di
-calcolo, e definisce come verranno visualizzati i risultati in QGIS al
-termine.
+Tutti i parametri di questa sezione risiedono nei blocchi richiudibili del
+Tab 1. Per ciascuno si riportano simbolo, unità, valore di default e intervallo
+ammesso.
 
-## 1. Cartella Input CSV
+## 6.1 ⚙ Compressori
 
-Seleziona la cartella che contiene `sf_nodes.csv` e `sf_pipelines.csv`. Se
-sei arrivato qui dopo aver premuto "Genera CSV" nel Tab 1, questo campo si
-popola automaticamente con la cartella scelta lì.
+Blocco attivabile per le reti dotate di stazioni di compressione.
 
-## 2. Parametri Fisici
+| Campo | Descrizione |
+|-------|-------------|
+| **Campo e Valore** | Campo del layer nodi e valore che identificano i nodi compressore. |
+| **Pressione OUT** [bar] | Accetta indifferentemente il nome di un campo del layer nodi contenente la pressione di mandata, oppure un valore numerico costante (per esempio `70.0`). |
 
-Questi valori vengono applicati sia in fase di export dei CSV sia durante la
-simulazione vera e propria.
+### 6.1.1 Formulazione
 
-| Campo | Unità | Default | Descrizione |
-|-------|-------|---------|-------------|
-| **Pressione reference** | bar | 70 | Pressione assoluta assegnata ai nodi reference. È il valore che "ancora" tutta la rete (vedi "Concetti fisici di base" → "Nodi di riferimento"). Valori tipici: 70 bar per una rete nazionale di trasporto (RNT), 25 bar per una rete regionale (RRT). |
-| **Temperatura** | K | 300 | Temperatura operativa del gas, in gradi Kelvin (27 °C ≈ 300 K). Influenza sia la comprimibilità del gas (fattore Z) sia la sua densità nelle condizioni operative. |
-| **Flusso nodi senza domanda** | sm³/s | 0,0001 | Flusso minimo assegnato ai nodi "junction" (di transito, senza consumo proprio) che nei CSV risultano a domanda esattamente zero. Serve a evitare righe completamente vuote nella matrice del solutore, che altrimenti può risultare singolare (senza soluzione). Se la rete non converge a causa di nodi isolati, prova ad aumentarlo a 0,001. |
+Il nodo marcato come compressore viene sdoppiato in un nodo di aspirazione e un
+nodo di mandata, connessi dalla stazione. La pressione di mandata è imposta
+come equazione di vincolo aggiuntiva del sistema (2.3); la portata elaborata è
+determinata dalla soluzione.
 
-> **Perché serve una temperatura operativa?** Il volume e la densità di un
-> gas dipendono sia dalla pressione sia dalla temperatura (legge dei gas,
-> vedi "Concetti fisici di base"). Il plugin assume per semplicità una
-> temperatura uniforme su tutta la rete — una semplificazione ragionevole
-> per reti interrate o poco esposte a forti variazioni termiche locali.
+Poiché il vincolo di pressione può richiedere alla rete di monte portate molto
+superiori a quelle di regime naturale, la procedura prevede:
 
-## 3. Parametri Solutore
+1. una simulazione **baseline** senza compressore, con tolleranza rilassata e
+   numero di iterazioni limitato, impiegata per determinare i versi di flusso
+   e come punto di partenza (*warm start*) della simulazione successiva;
+2. in caso di mancata convergenza, una **continuazione sul parametro di
+   controllo**: il target di mandata è portato per incrementi successivi dal
+   valore di equilibrio senza compressore al valore di targa, ciascun passo
+   inizializzato dal precedente.
 
-Il sistema di equazioni della rete è **non lineare** (la perdita di carico
-in una condotta dipende dalla portata che ci scorre, che a sua volta dipende
-dalle pressioni ai suoi estremi — vedi "Concetti fisici di base"). Un sistema
-non lineare, a differenza di uno lineare, non si risolve con un unico
-calcolo diretto: va risolto per **approssimazioni successive**, con un
-metodo iterativo chiamato **Newton-Raphson**.
+Le due fasi sono automatiche e tracciate nel log con il prefisso
+`[compressori]`.
 
-L'idea di base del metodo: si parte da una stima iniziale delle pressioni,
-si calcola quanto le equazioni di bilancio sono "sbagliate" con quella
-stima (l'errore, o residuo), e si corregge la stima in una direzione che
-riduce l'errore. Si ripete finché l'errore non scende sotto una soglia
-accettabile (convergenza), oppure finché non si raggiunge un numero massimo
-di tentativi senza successo (in tal caso la simulazione si ferma senza
-risultato).
+### 6.1.2 Avvertenza
 
-| Campo | Default | Descrizione |
-|-------|---------|-------------|
-| **Max iterazioni** | 50 | Numero massimo di cicli di correzione che il metodo di Newton-Raphson può eseguire prima di arrendersi. Aumenta a 100–200 per reti molto grandi, molto ramificate, o "mal condizionate" (con condotte di diametro molto diverso tra loro collegate direttamente). |
-| **Tolleranza** | 1,0 | Soglia sotto la quale l'errore residuo viene considerato accettabile e il calcolo si ferma dichiarando "convergenza raggiunta". Riduci a 0,1 per risultati più precisi (ma più iterazioni necessarie); aumenta se la rete fatica a convergere e una precisione minore è accettabile per il tuo scopo. |
-| **URF (Under-Relaxation Factor)** | 2,0 | Controlla quanto "decisa" è ogni correzione ad ogni iterazione. Un valore troppo alto può far "oscillare" la soluzione attorno al punto corretto senza mai stabilizzarsi (come spingere troppo forte un'altalena); un valore troppo basso rende la convergenza più lenta ma più stabile. Riduci a 1,0–1,5 se la simulazione oscilla senza convergere; aumenta fino a 3,0 per accelerare la convergenza su reti ben condizionate che convergono già facilmente. |
-| **Auto-calibra tol e URF** | Off | Se attivo, il plugin prova automaticamente diverse combinazioni di tolleranza e URF (partendo dai valori impostati e riducendoli progressivamente) fino a trovarne una che porta a convergenza, risparmiandoti i tentativi manuali. |
+In assenza di *Pressione OUT* il motore adotta un rapporto di compressione di
+ripiego pari a **1,1** (§13.3), insufficiente in condizioni di carico reale e
+tipicamente causa di divergenza con pressioni che collassano. Il plugin emette
+un avviso non bloccante prima dell'avvio.
 
-## 4. Rete e Composizione Gas
+### 6.1.3 Grandezze restituite
 
-| Campo | Default | Descrizione |
-|-------|---------|-------------|
-| **Rugosità condotte** | 5×10⁻⁵ m | Rugosità interna assoluta delle pareti della condotta: quanto sono "scabre" internamente, in media, rispetto al diametro. Entra nella **formula di Chen** (una variante dell'equazione di Darcy-Weisbach, vedi "Concetti fisici di base" → "Perdita di carico") usata per calcolare l'attrito in ogni condotta. Dipende dal materiale: acciaio ≈ 5×10⁻⁵ m; polietilene (PE/HDPE) ≈ 7×10⁻⁶ m (molto più liscio); ghisa ≈ 2,6×10⁻⁴ m (più scabra). |
-| **Flusso minimo export** | 1×10⁻⁶ sm³/s | Valore segnaposto scritto nel CSV per i nodi senza una domanda nota, per evitare che il file di export contenga righe vuote (che causerebbero una matrice singolare nel solutore). È concettualmente simile al "Flusso nodi senza domanda" dei Parametri Fisici, ma agisce in un momento diverso della pipeline: questo durante l'esportazione dei CSV, l'altro come correzione appena prima della simulazione. |
-| **Preset gas** | Gas naturale (100% CH₄) | Scorciatoia per compilare rapidamente la composizione. Opzioni disponibili: gas naturale puro, gas naturale "tipico" (94% metano + altri componenti minori), mix idrogeno/metano al 10%, 20% o 50%, e idrogeno puro. Scegli "Personalizzato..." per inserire una composizione a mano. |
-| **Composizione (dict)** | `{'methane': 1.0}` | La composizione del gas, come dizionario Python con le frazioni molari di ciascun componente. La somma delle frazioni deve sempre essere 1,0. Componenti supportati: `methane` (metano), `ethane` (etano), `propane` (propano), `butane` (butano), `nitrogen` (azoto), `carbon_dioxide` (anidride carbonica), `hydrogen` (idrogeno). |
+A convergenza è calcolata la potenza isentropica assorbita da ciascuna
+stazione:
 
-### Perché la composizione del gas conta per il calcolo idraulico
+    P = cp · T₁ · [ r^((n−1)/n) − 1 ] · ṁ / (η · 10⁶)        [MW]         (6.1)
 
-Il gas non è un fluido "generico": le sue proprietà fisiche — densità,
-viscosità, comprimibilità (fattore Z), potere calorifico — dipendono
-direttamente da quali molecole lo compongono e in che proporzione. Miscele
-diverse (per esempio metano puro contro un blend con il 20% di idrogeno)
-hanno densità e comprimibilità diverse, e quindi si comportano in modo
-diverso nella stessa condotta alla stessa pressione: a parità di portata
-volumetrica standard, una miscela più leggera (più ricca di idrogeno) scorre
-più velocemente e genera meno perdita di carico rispetto a metano puro, ma
-trasporta anche meno energia per unità di volume (vedi il campo `hhv_mj_sm3`
-nella sezione "Risultati — Nodi"). Per questo motivo il plugin permette di
-impostare esplicitamente la composizione, e la usa in ogni singolo calcolo di
-proprietà del gas, nodo per nodo e condotta per condotta.
+con r = p_out/p_in rapporto effettivo, n = cp/cv, ṁ portata massica, η
+rendimento. I valori sono scritti in `results_compressors.csv` (§10.4).
 
-## 5. Visualizzazione Risultati
+## 6.2 ⚙ Opzioni avanzate
 
-Questa parte non influisce sul calcolo: sceglie solo **come vengono
-disegnati** i risultati nei nuovi layer QGIS creati al termine della
-simulazione.
+| Parametro | Simbolo | Unità | Default | Intervallo | Descrizione |
+|-----------|---------|-------|---------|------------|-------------|
+| **Preserva nodi intermedi** | — | — | disattivo | — | Disabilita il collasso topologico: tutti i nodi intermedi sono conservati e le quote campionate dal DEM. Produce modelli di dimensione maggiore ma con profilo altimetrico risolto lungo le condotte. Richiede un DEM (§5.2). |
+| **Flusso orario nodi** | — | — | non assegnato | — | Campo dei consumi orari in Modalità A (§5.6). |
+| **Raggio aggancio** | r_s | m | 50,0 | 0,1–10 000 | Distanza massima entro cui un nodo del layer nodi è associato a un estremo di condotta durante il collasso. Valori insufficienti impediscono il riconoscimento dei nodi di riferimento e l'attribuzione delle domande; valori eccessivi attribuiscono la domanda al nodo errato. |
+| **Separatore flussi** | — | — | `;` | `;` `,` `\|` `:` spazio tab | Separatore dei valori del profilo orario. |
+| **Pressione reference** | p_ref | bar (relativi) | 75,0 | 1–300 | Pressione imposta ai nodi di riferimento. Per la conversione in pressione assoluta si veda la (2.2). |
+| **Temperatura** | T | K | 288,15 | 250–400 | Temperatura del gas, uniforme sull'intera rete (ipotesi isoterma, §1.3). |
+| **Flusso placeholder** | D_min | sm³/s | 1×10⁻⁴ | 0–10 | Domanda attribuita ai nodi di transito, cioè privi di domanda propria. Ha funzione di regolarizzazione: una riga di bilancio identicamente nulla può rendere singolare la matrice jacobiana. |
+| **Rugosità condotte** | ε | m | 1,2×10⁻⁵ | 1×10⁻⁷–0,1 | Rugosità assoluta della parete interna, parametro della (2.9). Valori per materiale al §13.2. |
+| **Flusso minimo export** | — | sm³/s | 1×10⁻⁶ | 1×10⁻¹⁰–1 | Valore scritto nel file di ingresso per i nodi privi di domanda nota. Agisce in fase di scrittura; il *Flusso placeholder* agisce successivamente, in fase di validazione, e prevale. |
+| **Decimali layer risultato** | — | — | 4 | 0–10 | Cifre decimali dei campi numerici dei layer prodotti. |
+| **Mostra layer collassato nella legenda** | — | — | attivo | — | I layer `Condotte #N` / `Nodi #N` sono resi visibili nella legenda. Se disattivato essi vengono comunque creati, essendo necessari per la Modalità B. |
+| **Crea layer condotte originali colorato** | — | — | disattivo | — | Produce un ulteriore layer `R-P-orig-…` con i risultati riportati sulla geometria originale, non collassata. |
 
-### Nodi
+## 6.3 ⚙ Parametri solutore
 
-| Elemento | Descrizione |
-|----------|-------------|
-| **Colora per** | Il campo usato per la scala cromatica del layer nodi. Opzioni: Pressione, Temperatura, Specific gravity, Z-factor, HHV, Wobbe, Densità, Densità standard, Massa molare (vedi la sezione "Risultati — Nodi" per il significato fisico di ciascuno). |
-| **Checkbox campi** | Sceglie quali campi risultato vengono inclusi come attributi nel layer nodi (interrogabili con lo strumento "Identifica" di QGIS). Attivi per default: Pressione, Temperatura, Specific gravity, Z-factor, HHV, Wobbe. |
+Riferimento teorico: §2.7.
 
-### Condotte
+| Parametro | Unità | Default | Intervallo | Descrizione |
+|-----------|-------|---------|------------|-------------|
+| **Max iterazioni** | — | 50 | 10–2000 | Numero massimo di iterazioni di Newton-Raphson. Si veda l'avvertenza 6.3.1. |
+| **Tolleranza** | Sm³/s | 0,001 | 1×10⁻⁴–10 | Soglia del criterio (2.14): massimo squilibrio di bilancio ammesso per nodo. Il riquadro adiacente riporta l'equivalente in Sm³/h (moltiplicazione per 3600): il default corrisponde a 3,6 Sm³/h. |
+| **URF** | — | 2,0 | 0,1–20 | Fattore di sotto-rilassamento della (2.13). **Compare a denominatore**: valori maggiori riducono l'ampiezza del passo e stabilizzano l'iterazione; valori inferiori a 1 amplificano il passo di Newton. Il valore assegnato costituisce il limite inferiore adottato dallo schema adattativo (§2.7). |
+| **Auto-calibra tol e URF** | — | disattivo | — | Assegna tolleranza e URF in funzione del numero di nodi secondo la tabella §13.1.1 e, in caso di mancata convergenza, percorre la medesima scala verso combinazioni più rilassate. L'attivazione disabilita i due campi corrispondenti. |
+| **Affina precisione** | — | disattivo | — | Successivamente alla prima convergenza, ripete la soluzione con tolleranze decrescenti — prima per fattori di 10, quindi per bisezione in scala logaritmica — fino al limite di 1×10⁻⁴, conservando il risultato corrispondente alla tolleranza minima effettivamente raggiunta. Indipendente da *Auto-calibra*: quest'ultima definisce il punto di partenza, *Affina precisione* il punto di arrivo. Il valore da riportare in sede di documentazione dei risultati è la tolleranza **finale**, indicata nel log. |
+| **Forza Multiprocesso** | — | attivo | — | Esecuzione in processi Python indipendenti, necessaria affinché le simulazioni parallele (§7.3, §7.4) utilizzino effettivamente più core. |
 
-| Elemento | Descrizione |
-|----------|-------------|
-| **Colora per** | Il campo usato per la scala cromatica del layer condotte. Opzioni: Portata (Smc/h), Velocità (m/s), Pressione media (bar), Specific gravity, Z-factor, Densità. |
-| **Checkbox campi** | Campi risultato da includere come attributi nel layer condotte. Attivi per default: Portata, Portata assoluta, Velocità, Pressione media, Specific gravity. |
-| **Mostra frecce direzione flusso** | Se attivo (default), disegna un piccolo marcatore triangolare al centro di ogni condotta, orientato nel verso reale in cui scorre il gas (la geometria viene invertita automaticamente per le condotte con portata negativa, cioè flusso da B verso A — vedi "Risultati — Condotte"). Molto utile per capire a colpo d'occhio la direzione del flusso in una rete complessa. |
+### 6.3.1 Avvertenza sul numero massimo di iterazioni
+
+Il numero di iterazioni necessarie dipende dalla distanza fra lo stato iniziale
+e la soluzione, non dalla dimensione della rete. Nelle prove di verifica
+condotte su questo plugin (§11.7) il valore di default di 50 iterazioni si è
+rivelato **insufficiente** su tutte e tre le reti provate, comprese due reti di
+4 e 10 nodi; la rete del §11 converge in 92 iterazioni.
+
+Si raccomanda pertanto di assumere **Max iterazioni = 200** come punto di
+partenza. L'incremento non comporta penalizzazioni: il calcolo termina
+comunque al raggiungimento del criterio (2.14).
+
+## 6.4 Composizione Gas
+
+| Campo | Descrizione |
+|-------|-------------|
+| **Gas base** | Preset di composizione: *SNAM — Mazara del Vallo (gas algerino)* (default), *SNAM — Gela (gas libico)*, *Metano puro (100% CH₄)*, *Gas naturale tipico (94% CH₄)*, *Idrogeno puro (H₂)*, *Personalizzato…*. Le frazioni molari sono riportate al §13.3. |
+| **Aggiunta H₂** | Frazione **molare** di idrogeno addizionata al gas base, 0–99 %. La composizione di base è riscalata proporzionalmente: indicata con x la frazione di H₂ e con y_k le frazioni del gas base, la miscela risultante ha frazioni y_k·(1−x) e frazione di idrogeno x. |
+| **Composizione export** | Composizione effettivamente scritta nel file di ingresso. È aggiornata automaticamente in funzione dei due campi precedenti ed è modificabile manualmente per composizioni non previste dai preset; in tal caso il preset assume il valore *Personalizzato*. |
+
+### 6.4.1 Componenti ammessi
+
+`methane`, `ethane`, `propane`, `isobutane`, `butane`, `isopentane`,
+`pentane`, `hexane`, `nitrogen`, `carbon dioxide`, `helium`, `hydrogen`.
+
+La chiave dell'anidride carbonica è **`carbon dioxide`**, con spazio. Le
+frazioni molari devono avere somma unitaria.
+
+### 6.4.2 Effetto della composizione sulla soluzione idraulica
+
+La composizione interviene nella (2.4) attraverso SG e Z e nella (2.9)
+attraverso il numero di Reynolds. A parità di portata volumetrica standard,
+una miscela a densità relativa inferiore — per esempio addizionata di idrogeno
+— presenta minore perdita di carico e maggiore velocità, ma minore contenuto
+energetico per unità di volume. La valutazione di uno scenario di blending
+richiede pertanto l'esame congiunto di pressione, velocità, potere calorifico
+e indice di Wobbe (§9.4).

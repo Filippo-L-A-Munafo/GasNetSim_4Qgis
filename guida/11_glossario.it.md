@@ -1,107 +1,122 @@
-# Glossario
+# 14. Nomenclatura e glossario
 
-Un elenco rapido dei termini tecnici usati nel plugin e in questa guida, per
-chi non ha familiarità con il linguaggio dell'idraulica del gas o del GIS.
+## 14.1 Simboli
 
-**Pressione assoluta** — Pressione misurata a partire dal vuoto assoluto (0
-bar = nessuna pressione). È l'unità usata da tutto il plugin.
+| Simbolo | Grandezza | Unità |
+|---------|-----------|-------|
+| p | Pressione assoluta | Pa, bar |
+| p_ref | Pressione assegnata ai nodi di riferimento (relativa) | bar |
+| p_b, T_b | Pressione e temperatura di riferimento standard | 101 325 Pa; 288,15 K |
+| p_avg | Pressione media in condotta, eq. (2.7) | Pa |
+| T | Temperatura del gas | K |
+| Q | Portata volumetrica in condizioni standard | sm³/s, Smc/h |
+| D_i | Domanda nodale (positiva in prelievo) | sm³/s |
+| ṁ | Portata massica | kg/s |
+| v | Velocità media del gas | m/s |
+| D | Diametro interno della condotta | m |
+| L | Lunghezza della condotta | m |
+| ε | Rugosità assoluta della parete | m |
+| f | Fattore d'attrito, eq. (2.9) | — |
+| Re | Numero di Reynolds | — |
+| η | Fattore di efficienza della condotta | — |
+| h | Quota geodetica del nodo | m |
+| H | Termine correttivo di dislivello, eq. (2.8) | Pa² |
+| Z | Fattore di comprimibilità | — |
+| SG | Densità relativa rispetto all'aria, eq. (2.10) | — |
+| ρ | Densità in condizioni operative | kg/m³ |
+| ρ_b | Densità in condizioni standard | kg/sm³ |
+| M | Massa molare della miscela | g/mol |
+| HHV | Potere calorifico superiore | MJ/sm³ |
+| W | Indice di Wobbe, eq. (2.11) | MJ/sm³ |
+| x_H₂ | Frazione molare di idrogeno | — |
+| r | Rapporto di compressione, p_out/p_in | — |
+| P | Potenza assorbita dalla stazione, eq. (6.1) | MW |
+| F(x) | Vettore dei residui di bilancio nodale | sm³/s |
+| J | Matrice jacobiana ∂F/∂x | — |
+| tol | Tolleranza del criterio (2.14) | Sm³/s |
+| URF | Fattore di sotto-rilassamento, eq. (2.13) | — |
+| r_s | Raggio di aggancio | m |
+| R | Costante universale dei gas | J/(mol·K) |
 
-**Pressione relativa (manometrica)** — Pressione misurata a partire dalla
-pressione atmosferica (0 bar = pressione atmosferica). È quella letta di
-solito da un manometro; per usarla nel plugin va convertita in assoluta
-sommando circa 1 bar.
+## 14.2 Glossario
 
-**Portata** — Quantità di gas che attraversa una sezione di condotta
-nell'unità di tempo. Nel plugin è espressa in Smc/h (portata volumetrica
-standard) o sm³/s.
+**Bilancio nodale** — Equazione di conservazione della massa scritta al nodo,
+eq. (2.3). Costituisce l'equazione risolutiva del modello.
 
-**Smc (Standard metro cubo)** — Unità di volume di gas riferita a condizioni
-standard fisse (15 °C, 1,01325 bar), usata per confrontare portate senza
-dover specificare ogni volta la pressione reale del gas.
+**Blending** — Immissione di idrogeno, o di altro gas, in una rete progettata
+per gas naturale.
 
-**Densità** — Massa di gas per unità di volume (kg/m³). Cambia con pressione
-e temperatura, perché il gas è comprimibile.
+**Caso non convergente (NONCONV)** — Esito in cui il criterio (2.14) non è
+soddisfatto entro il numero massimo di iterazioni. Il risultato restituito è
+l'ultimo iterato calcolato e non rappresenta uno stato fisicamente ammissibile.
 
-**Densità standard** — Densità del gas alle condizioni standard di
-riferimento; dipende solo dalla composizione del gas, non dalla pressione
-del punto in cui ci si trova.
+**Collasso topologico** — Costruzione del grafo di calcolo a partire dalla
+geometria vettoriale: esplosione delle polilinee, identificazione degli estremi
+coincidenti, generazione di nodi e archi, calcolo delle lunghezze (§5.3.1).
 
-**Massa molare** — Massa media di una mole di molecole della miscela di gas
-(g/mol). Componenti più pesanti (propano, butano) la aumentano; l'idrogeno la
-riduce.
+**Componente sconnessa (isola)** — Sottografo non connesso al grafo principale.
+Se priva di nodo di riferimento rende il sistema indeterminato.
 
-**Specific gravity** — Rapporto tra la densità del gas e la densità
-dell'aria, nelle stesse condizioni. Indica se il gas è più leggero (< 1) o
-più pesante (> 1) dell'aria.
+**Condizioni standard** — Stato di riferimento per la misura dei volumi:
+288,15 K e 101 325 Pa, eq. (2.1).
 
-**Fattore di comprimibilità Z** — Misura di quanto un gas reale si discosta
-dal comportamento ideale (Z = 1 per un gas ideale).
+**Densità relativa (specific gravity)** — Rapporto fra la massa molare della
+miscela e quella dell'aria, eq. (2.10). Parametro soggetto a vincolo normativo
+nelle reti italiane (§13.4.2).
 
-**HHV (Higher Heating Value, potere calorifico superiore)** — Energia
-rilasciata dalla combustione completa di un metro cubo standard di gas,
-incluso il calore recuperabile dalla condensazione del vapore prodotto.
+**Equazione generale di portata** — Relazione (2.4) fra portata e differenza
+dei quadrati delle pressioni, comprensiva del termine di dislivello e delle
+proprietà del gas reale.
 
-**Indice di Wobbe** — Indicatore di intercambiabilità tra gas diversi (HHV
-diviso la radice quadrata della specific gravity): due gas con lo stesso
-indice di Wobbe si comportano allo stesso modo nello stesso bruciatore.
+**Fattore di comprimibilità (Z)** — Scostamento del comportamento del gas reale
+da quello ideale; calcolato con GERG-2008.
 
-**Nodo di riferimento (reference)** — Nodo della rete a cui è assegnata una
-pressione assoluta nota; funge da "ancora" per tutto il calcolo (come il
-nodo di massa in un circuito elettrico). Obbligatorio: almeno uno per rete.
+**GERG-2008** — Equazione di stato di riferimento per il gas naturale,
+normalizzata in ISO 20765-2.
 
-**Bilancio di massa** — Principio secondo cui, in ogni nodo, tutto il gas
-che entra deve uscirne (o essere consumato lì); alla base delle equazioni
-risolte dal solutore.
+**Indice di Wobbe** — Rapporto fra potere calorifico superiore e radice della
+densità relativa, eq. (2.11). Indice di intercambiabilità fra gas combustibili.
 
-**Perdita di carico** — Caduta di pressione lungo una condotta causata
-dall'attrito tra il gas e le pareti interne.
+**Line search** — Riduzione progressiva dell'ampiezza del passo di Newton fino
+a ottenere una diminuzione del residuo.
 
-**Rugosità** — Grado di scabrosità della superficie interna di una condotta;
-influenza l'attrito e quindi la perdita di carico. Dipende dal materiale.
+**MOP** — Massima pressione di esercizio; base della classificazione per specie
+(§13.4.1).
 
-**Formula di Chen** — Formula usata dal motore di calcolo per stimare la
-perdita di carico per attrito in ogni condotta, variante dell'equazione di
-Darcy-Weisbach.
+**Nodo di riferimento** — Nodo a pressione imposta; condizione al contorno del
+problema. È inoltre il nodo in cui è assegnata la composizione del gas immesso.
 
-**Regime permanente (steady-state)** — Tipo di soluzione calcolata dal
-plugin: assume che i consumi restino costanti nel tempo e calcola lo stato
-della rete una volta stabilizzata, senza simulare l'evoluzione nel tempo
-(transitori).
+**Nodo di transito (junction)** — Nodo privo di domanda propria, sede di
+connessione fra condotte. Riceve la domanda di ripiego (§6.2).
 
-**Metodo di Newton-Raphson** — Metodo numerico iterativo usato per risolvere
-il sistema di equazioni non lineari della rete, per approssimazioni
-successive.
+**Portata di ripiego (placeholder)** — Domanda di valore trascurabile assegnata
+ai nodi di transito per evitare righe identicamente nulle nella matrice
+jacobiana.
 
-**Iterazione** — Un singolo ciclo di correzione del metodo di Newton-Raphson.
+**Raggio di aggancio** — Distanza massima entro cui un nodo del layer nodi è
+associato a un estremo di condotta durante il collasso (§6.2).
 
-**Tolleranza** — Soglia sotto la quale l'errore residuo del calcolo viene
-considerato accettabile (convergenza raggiunta).
+**Regime stazionario** — Condizione di funzionamento a domanda costante, alla
+quale si riferisce l'intera formulazione. I transitori non sono modellati.
 
-**URF (Under-Relaxation Factor)** — Parametro che controlla quanto è
-"decisa" ogni correzione del metodo iterativo; troppo alto genera
-oscillazioni, troppo basso rallenta la convergenza.
+**Residuo** — Valore assunto da F(x) per un dato stato: misura lo squilibrio
+dei bilanci nodali. Il criterio di arresto è formulato sul suo massimo.
 
-**Convergenza** — Il momento in cui l'errore del calcolo scende sotto la
-tolleranza impostata e la simulazione si considera conclusa con successo.
+**Schema diretto / schema staggered** — Modalità di accoppiamento fra problema
+idraulico e tracciamento della composizione (§2.6). Lo schema staggered è
+attivato in presenza di composizioni nodali multiple.
 
-**Collasso topologico** — Operazione che trasforma geometrie GIS grezze
-(linee e punti indipendenti) in un grafo pulito di nodi e condotte collegati
-correttamente tra loro.
+**Snap** — Unificazione geometrica di estremi mutuamente prossimi (§4.3).
 
-**Raggio di aggancio** — Distanza massima entro cui, durante il collasso, un
-nodo viene collegato all'estremità di una condotta vicina.
+**Sotto-rilassamento (URF)** — Divisore dell'incremento di Newton, eq. (2.13).
+Valori maggiori smorzano l'iterazione.
 
-**DEM (Digital Elevation Model)** — Layer raster che rappresenta la quota
-del terreno; usato dal plugin per estrarre l'altitudine dei nodi.
+**Throughput nodale** — Portata complessiva entrante in un nodo dalle condotte
+afferenti; distinta dalla domanda nodale.
 
-**Velocità di erosione** — Velocità limite oltre la quale il flusso di gas
-ad alta velocità inizia a danneggiare per erosione le pareti interne della
-condotta.
+**Warm start (seed)** — Inizializzazione del calcolo con le pressioni di una
+soluzione conversa precedente, allo scopo di ridurre il numero di iterazioni
+(§7.6).
 
-**Specie di condotta (D.M. 17/04/2008)** — Classificazione normativa
-italiana delle condotte di trasporto gas in base alla loro pressione massima
-di esercizio (1a, 2a, 3a, 4a specie).
-
-**Blending idrogeno/metano** — Pratica di iniettare una miscela di idrogeno e
-metano in una rete progettata originariamente per gas naturale puro, per
-ridurre le emissioni di CO₂.
+**Velocità di erosione** — Soglia di velocità oltre la quale il flusso ad alta
+velocità determina erosione della parete interna, eq. (13.1).

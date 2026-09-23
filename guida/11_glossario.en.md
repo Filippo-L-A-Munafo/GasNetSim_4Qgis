@@ -1,102 +1,130 @@
-# Glossary
+# 14. Nomenclature and glossary
 
-A quick list of the technical terms used in the plugin and in this guide,
-for anyone unfamiliar with gas hydraulics or GIS terminology.
+## 14.1 Symbols
 
-**Absolute pressure** — Pressure measured starting from a perfect vacuum (0
-bar = no pressure). This is the unit used throughout the plugin.
+| Symbol | Quantity | Unit |
+|--------|----------|------|
+| p | Absolute pressure | Pa, bar |
+| p_ref | Pressure assigned to reference nodes (gauge) | bar |
+| p_b, T_b | Standard reference pressure and temperature | 101 325 Pa; 288.15 K |
+| p_avg | Average pipeline pressure, eq. (2.7) | Pa |
+| T | Gas temperature | K |
+| Q | Volumetric flow rate at standard conditions | sm³/s, Sm³/h |
+| D_i | Nodal demand (positive for withdrawal) | sm³/s |
+| ṁ | Mass flow rate | kg/s |
+| v | Average gas velocity | m/s |
+| D | Internal pipeline diameter | m |
+| L | Pipeline length | m |
+| ε | Absolute wall roughness | m |
+| f | Friction factor, eq. (2.9) | — |
+| Re | Reynolds number | — |
+| η | Pipeline efficiency factor | — |
+| h | Nodal geodetic elevation | m |
+| H | Elevation correction term, eq. (2.8) | Pa² |
+| Z | Compressibility factor | — |
+| SG | Specific gravity relative to air, eq. (2.10) | — |
+| ρ | Density at operating conditions | kg/m³ |
+| ρ_b | Density at standard conditions | kg/sm³ |
+| M | Molar mass of the mixture | g/mol |
+| HHV | Higher heating value | MJ/sm³ |
+| W | Wobbe index, eq. (2.11) | MJ/sm³ |
+| x_H₂ | Molar fraction of hydrogen | — |
+| r | Compression ratio, p_out/p_in | — |
+| P | Power absorbed by the station, eq. (6.1) | MW |
+| F(x) | Vector of nodal balance residuals | sm³/s |
+| J | Jacobian matrix ∂F/∂x | — |
+| tol | Tolerance of criterion (2.14) | Sm³/s |
+| URF | Under-relaxation factor, eq. (2.13) | — |
+| r_s | Snap radius | m |
+| R | Universal gas constant | J/(mol·K) |
 
-**Relative (gauge) pressure** — Pressure measured starting from atmospheric
-pressure (0 bar = atmospheric pressure). This is usually what a field gauge
-reads; to use it in the plugin, convert it to absolute by adding about 1 bar.
+## 14.2 Glossary
 
-**Flow rate** — Amount of gas passing through a pipe's cross section per
-unit time. In the plugin it's expressed in Sm³/h (standard volumetric flow)
-or sm³/s.
+**Best iterate** — The result returned when the simulation does not converge:
+the last computed state, which does not satisfy the nodal balances.
 
-**Sm³ (Standard cubic metre)** — Unit of gas volume referred to fixed
-standard conditions (15 °C, 1.01325 bar), used to compare flow rates without
-having to specify the gas's actual pressure every time.
+**Blending** — Injection of hydrogen, or another gas, into a network designed
+for natural gas.
 
-**Density** — Mass of gas per unit volume (kg/m³). Changes with pressure and
-temperature, because gas is compressible.
+**Chen correlation** — Explicit expression (2.9) for the friction factor,
+applied to every pipeline.
 
-**Standard density** — Gas density at standard reference conditions;
-depends only on gas composition, not on the local pressure.
+**Compressor (compressor station)** — Component that raises pressure; in the
+plugin it is configured by imposing the discharge pressure, and the results
+include the power and energy absorbed.
 
-**Molar mass** — Average mass of one mole of molecules of the gas mixture
-(g/mol). Heavier components (propane, butane) increase it; hydrogen lowers
-it.
+**Disconnected component (island)** — Subgraph not connected to the main graph.
+Without a reference node it renders the system indeterminate.
 
-**Specific gravity** — Ratio between gas density and air density, at the
-same conditions. Indicates whether the gas is lighter (< 1) or heavier (> 1)
-than air.
+**Erosional velocity** — Velocity threshold beyond which high-velocity flow
+causes erosion of the internal wall, eq. (13.1).
 
-**Compressibility factor Z** — Measure of how much a real gas deviates from
-ideal behaviour (Z = 1 for an ideal gas).
+**GERG-2008** — Reference equation of state for natural gas, standardised in
+ISO 20765-2.
 
-**HHV (Higher Heating Value)** — Energy released by fully burning one
-standard cubic metre of gas, including the heat recoverable from condensing
-the water vapour produced.
+**General flow equation** — Relation (2.4) between flow rate and the difference
+of the squares of the pressures, inclusive of the elevation term and of
+real-gas properties.
 
-**Wobbe index** — Indicator of interchangeability between different gases
-(HHV divided by the square root of specific gravity): two gases with the
-same Wobbe index behave the same way in the same burner.
+**Junction (transit) node** — Node without a demand of its own, where pipelines
+connect. It receives the fallback demand (§6.2).
 
-**Reference node** — Network node assigned a known absolute pressure; acts
-as the "anchor" for the whole calculation (like the ground node in an
-electrical circuit). Mandatory: at least one per network.
+**Line search** — Progressive shortening of the Newton step until a reduction
+of the residual is obtained.
 
-**Mass balance** — Principle stating that, at every node, all the gas
-entering must leave it (or be consumed there); underlies the equations
-solved by the solver.
+**MOP** — Maximum operating pressure; basis of the classification by class
+(§13.4.1).
 
-**Pressure drop** — Drop in pressure along a pipe caused by friction between
-the gas and the internal walls.
+**Nodal balance** — Mass conservation equation written at a node, eq. (2.3). It
+constitutes the governing equation of the model.
 
-**Roughness** — Degree of roughness of a pipe's internal surface; affects
-friction and therefore pressure drop. Depends on the material.
+**Non-converged case (NONCONV)** — Outcome in which criterion (2.14) is not
+satisfied within the maximum iteration count. The result returned is the last
+iterate and does not represent a physically admissible state.
 
-**Chen formula** — Formula used by the calculation engine to estimate
-frictional pressure drop in each pipe, a variant of the Darcy-Weisbach
-equation.
+**Placeholder flow** — Demand of negligible magnitude assigned to transit nodes
+to avoid identically zero rows in the Jacobian matrix.
 
-**Steady state** — Type of solution computed by the plugin: assumes
-consumption stays constant over time and computes the network's state once
-it has settled, without simulating its evolution over time (transients).
+**Reference node** — Fixed-pressure node; boundary condition of the problem. It
+is also the node at which the composition of the injected gas is assigned.
 
-**Newton-Raphson method** — Iterative numerical method used to solve the
-network's non-linear system of equations, by successive approximations.
+**Residual** — Value taken by F(x) for a given state: it measures the imbalance
+of the nodal balances. The stopping criterion is formulated on its maximum.
 
-**Iteration** — A single correction cycle of the Newton-Raphson method.
+**Snap** — Geometric unification of mutually close endpoints (§4.3).
 
-**Tolerance** — Threshold below which the calculation's residual error is
-considered acceptable (convergence reached).
+**Snap radius** — Maximum distance within which a node of the node layer is
+associated with a pipeline endpoint during the collapse (§6.2).
 
-**URF (Under-Relaxation Factor)** — Parameter controlling how "decisive"
-each correction of the iterative method is; too high causes oscillations,
-too low slows down convergence.
+**Specific gravity** — Ratio between the molar mass of the mixture and that of
+air, eq. (2.10). A quantity subject to regulatory constraint in Italian
+networks (§13.4.2).
 
-**Convergence** — The point at which the calculation's error drops below the
-set tolerance and the simulation is considered successfully complete.
+**Standard conditions** — Reference state for volume measurement: 288.15 K and
+101 325 Pa, eq. (2.1).
 
-**Topological collapse** — Operation that turns raw GIS geometries
-(independent lines and points) into a clean graph of correctly-connected
-nodes and pipes.
+**Steady state** — Operating condition at constant demand, to which the entire
+formulation refers. Transients are not modelled.
 
-**Snapping radius** — Maximum distance within which, during collapse, a node
-is connected to a nearby pipe's endpoint.
+**Direct / staggered scheme** — Coupling modes between the hydraulic problem
+and composition tracking (§2.6). The staggered scheme is enabled where multiple
+nodal compositions are present.
 
-**DEM (Digital Elevation Model)** — Raster layer representing terrain
-elevation; used by the plugin to extract node elevations.
+**Throughput (nodal)** — Total flow entering a node from the connected
+pipelines; distinct from the nodal demand.
 
-**Erosional velocity** — Velocity limit beyond which high-velocity gas flow
-starts to damage the pipe's internal walls through erosion.
+**Topological collapse** — Construction of the computational graph from the
+vector geometry: explosion of polylines, identification of coincident
+endpoints, generation of nodes and edges, computation of lengths (§5.3.1).
 
-**Pipe species (Italian D.M. 17/04/2008)** — Italian regulatory
-classification of gas transmission pipes based on their maximum operating
-pressure (1st, 2nd, 3rd, 4th species).
+**Under-relaxation (URF)** — Divisor of the Newton increment, eq. (2.13).
+Larger values damp the iteration.
 
-**Hydrogen/methane blending** — The practice of injecting a hydrogen/methane
-mixture into a network originally designed for pure natural gas, in order to
-reduce CO₂ emissions.
+**Warm start (seed)** — Initialisation of the computation with the pressures of
+a previously converged solution, in order to reduce the iteration count (§7.6).
+
+**Wobbe index** — Ratio of the higher heating value to the square root of
+specific gravity, eq. (2.11). Index of interchangeability between fuel gases.
+
+**Z factor** — See *Compressibility factor*: departure of real gas behaviour
+from ideal, computed with GERG-2008.

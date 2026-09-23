@@ -10,8 +10,27 @@ them to the CSV format GasNetSim expects, runs the hydraulic simulation in a
 background thread, and writes the results (pressures, flow rates, velocities)
 back into new colour-coded QGIS layers.
 
-For a detailed guide to the interface (currently in Italian), see
-[MANUALE.md](MANUALE.md).
+## Documentation
+
+The full user manual is **built into the plugin**: open it from the sidebar
+(**☰ → 📖 Guide**). It has 14 sections covering every interface control and
+the physics behind it, in English and Italian, and starts with a step-by-step
+tutorial that builds a small network from scratch and runs it.
+
+The same content is also available as a single file for reading on GitHub:
+[MANUALE.en.md](MANUALE.en.md) (English) · [MANUALE.md](MANUALE.md) (Italian).
+Both are generated from the `guida/` folder by `guida/_genera_manuale.py`, so
+edits belong in `guida/`, not in the manuals.
+
+## Versioning
+
+The plugin version (see `metadata.txt`) is **independent** of the GasNetSim
+engine version. The plugin is below 1.0 because it depends on an unreleased
+fork of GasNetSim 0.2.2 and because its solver defaults are still expected to
+change; 1.0.0 is reserved for the release whose defaults converge on first use
+and whose solver behaviour is settled. The engine version and commit actually
+used are recorded per run (see `run_info.json`), so results stay attributable
+regardless of either version number.
 
 ## Requirements
 
@@ -89,6 +108,20 @@ works directly with the QGIS Python from step 2.
 > not something you can shorten) blows past the limit and crashes the
 > plugin at import time with a `numba` `FileNotFoundError`. A short path
 > under your user folder (~30-40 characters) leaves enough headroom.
+
+> **Pin the engine for reproducible results**: the command above clones a
+> *branch*, which moves. Two installations performed on different days may
+> therefore run different engine code and produce different numbers. For any
+> result you intend to publish, clone a specific commit (or, better, a tag you
+> create in the engine fork) and record it:
+> ```
+> git clone https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis-venv.git C:\Users\<you>\GasNetSim_4Qgis-engine
+> cd C:\Users\<you>\GasNetSim_4Qgis-engine
+> git checkout <tag-or-commit>
+> ```
+> The plugin detects the engine version and commit at run time and writes them
+> into the log and into `run_info.json` next to every result set, so a set of
+> results always states which engine produced it.
 
 > **Version note**: upstream GasNetSim requires `geopandas>=1.0.1` and
 > `openpyxl>=3.1.5`; some QGIS versions bundle slightly older ones (e.g. QGIS

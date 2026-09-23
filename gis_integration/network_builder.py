@@ -1781,6 +1781,8 @@ def export_layers_to_csv(pipes_lyr, nodes_lyr, out_dir, ora=0,
 
 def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
                            dem_layer=None, nodes_layer=None,
+                           enable_elevation_smoothing=True,
+                           enable_elevation_smoothing=True,
                            diam_field='Diametro_pollici', diam_unit='in',
                            radius_m=50.0, log=None,
                            pressure_ref_pa=PRESSURE_REF_PA,
@@ -1866,8 +1868,11 @@ def run_collapse_pipeline(pipe_layer, out_dir, ora=0,
     archi, nodo_xy, skipped_null = build_graph(work_lyr)
     log(f"  Iniziale: {len(nodo_xy)} nodi, {len(archi)} archi")
     
-    if dem_layer is not None:
+    if dem_layer is not None and enable_elevation_smoothing:
+        log("  [DEM Altimetry] Applicazione filtro spike altimetrici (smoothing laplaciano topologico)...")
         archi, nodo_xy = apply_topological_laplacian_smoothing(archi, nodo_xy, log)
+    elif dem_layer is not None:
+        log("  [DEM Altimetry] Filtro spike altimetrici DISABILITATO dall'utente (mantenute quote grezze DEM)")
     # Controllo pipe: geometria nulla, duplicati, sovrapposizioni, isole
     pipe_warns, _ = check_pipe_issues(archi, skipped_null=skipped_null)
     for w in pipe_warns:
@@ -2127,6 +2132,8 @@ def _dump_pending_compressors(matched, comp_field, comp_value,
 
 def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
                              dem_layer=None, nodes_layer=None,
+                             enable_elevation_smoothing=True,
+                             enable_elevation_smoothing=True,
                              diam_field='Diametro_pollici', diam_unit='in',
                              radius_m=50.0, log=None,
                              pressure_ref_pa=PRESSURE_REF_PA,
@@ -2204,8 +2211,11 @@ def run_nocollapse_pipeline(pipe_layer, out_dir, ora=0,
     archi, nodo_xy, skipped_null = build_graph(work_lyr)
     log(f"  Iniziale: {len(nodo_xy)} nodi, {len(archi)} archi")
     
-    if dem_layer is not None:
+    if dem_layer is not None and enable_elevation_smoothing:
+        log("  [DEM Altimetry] Applicazione filtro spike altimetrici (smoothing laplaciano topologico)...")
         archi, nodo_xy = apply_topological_laplacian_smoothing(archi, nodo_xy, log)
+    elif dem_layer is not None:
+        log("  [DEM Altimetry] Filtro spike altimetrici DISABILITATO dall'utente (mantenute quote grezze DEM)")
     pipe_warns, _ = check_pipe_issues(archi, skipped_null=skipped_null)
     for w in pipe_warns:
         log(f"  {w}")

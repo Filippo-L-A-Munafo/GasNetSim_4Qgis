@@ -1,74 +1,87 @@
-# Introduzione
+# 1. Introduzione e ambito di applicazione
 
-## Cos'è GasNetSim 4Qgis
+## 1.1 Oggetto
 
-GasNetSim 4Qgis è un plugin per QGIS che calcola **come si comporta una rete di
-trasporto o distribuzione del gas**: quanta pressione c'è in ogni punto della
-rete, quanto gas passa in ogni condotta e a che velocità, partendo semplicemente
-dai dati geografici che già hai in QGIS (le condotte disegnate come linee, i
-nodi come punti).
+GasNetSim 4Qgis è un plugin per QGIS che risolve il problema idraulico di
+regime stazionario di una rete di trasporto di gas naturale, eventualmente
+addizionata di idrogeno, a partire dalla rappresentazione vettoriale della rete
+contenuta in un progetto QGIS.
 
-In pratica il plugin fa da ponte fra due mondi:
+Il plugin costituisce l'interfaccia geospaziale del solutore **GasNetSim**
+(Forschungszentrum Jülich, ICE-1) e ne estende le funzionalità con la gestione
+delle stazioni di compressione, l'esecuzione parallela di scenari orari e la
+restituzione cartografica dei risultati.
 
-- **QGIS**, dove la rete è fatta di geometrie (linee e punti) con attributi;
-- **GasNetSim**, il motore di calcolo che risolve le equazioni della fisica dei
-  gas e restituisce pressioni e portate.
+## 1.2 Modello risolto
 
-Il plugin si occupa di tutta la parte "noiosa" — tradurre i layer GIS nel
-formato che il motore di calcolo si aspetta, lanciare il calcolo, e
-ridisegnare i risultati come nuovi layer colorati — così l'utente può
-concentrarsi sui dati della propria rete e sull'interpretazione dei risultati.
+Il modello è di tipo **nodale**, in regime **stazionario** e **isotermo**, con
+equazione di stato del gas reale. Le grandezze incognite sono le pressioni ai
+nodi; portate, velocità e proprietà termofisiche sono grandezze derivate.
 
-## A cosa serve, in pratica
+La formulazione completa, con le equazioni effettivamente implementate, è
+riportata nel §2. In sintesi il modello include:
 
-Simulare una rete gas prima di intervenire sul campo permette di rispondere a
-domande come:
+- bilancio di massa a ciascun nodo di domanda;
+- equazione generale di portata per condotta, con fattore d'attrito calcolato
+  secondo la correlazione esplicita di Chen (1979);
+- termine correttivo di dislivello geodetico;
+- equazione di stato **GERG-2008** (ISO 20765-2) per fattore di
+  comprimibilità, densità e capacità termiche;
+- tracciamento della composizione in presenza di immissioni di gas diversi.
 
-- Se aumento il prelievo in una zona, la pressione resta sopra il minimo
-  garantito, o rischio di scendere sotto soglia?
-- Una condotta esistente riesce a portare più gas, o va sostituita/raddoppiata?
-- Cosa succede se nella rete inietto una miscela di idrogeno e metano invece
-  di gas naturale puro (blending H₂/CH₄)?
-- Dove si trovano i punti più critici della rete (velocità troppo alte,
-  perdite di pressione eccessive)?
+## 1.3 Ambito di validità e limitazioni
 
-Senza un simulatore, rispondere a queste domande richiederebbe misure sul
-campo o calcoli manuali molto laboriosi; il plugin li automatizza a partire
-dai dati che probabilmente hai già in un progetto QGIS.
+| Aspetto | Ambito |
+|---------|--------|
+| Regime | Stazionario. I transitori non sono modellati: ogni simulazione descrive lo stato asintotico della rete a domanda costante. |
+| Temperatura | Uniforme e assegnata. Il modello non risolve il bilancio termico lungo le condotte. |
+| Fase | Monofase gassosa. Non sono trattati condensati né trasporto bifase. |
+| Pressioni | Verificato su reti di 1ª e 2ª specie (24–75 barg). La formulazione non pone limiti espliciti di pressione. |
+| Componenti | Condotte, nodi di domanda e immissione, nodi a pressione imposta, stazioni di compressione. Valvole di regolazione, riduttori e stoccaggi non sono esposti dall'interfaccia. |
+| Ottimizzazione | Assente. Il plugin risolve la configurazione assegnata, non ne ricerca una ottimale. |
 
-## Il flusso di lavoro in due fasi
+Il plugin non effettua controlli di plausibilità sui dati di ingresso al di là
+di quelli topologici del §4: valori mancanti vengono sostituiti da valori di
+ripiego documentati nel §6, e il calcolo procede comunque. La responsabilità
+della coerenza fisica dei dati resta dell'utente.
 
-Il plugin è organizzato in due fasi, corrispondenti alle due schede (tab)
-della finestra principale:
+## 1.4 Applicazioni tipiche
 
-1. **Prepara Rete** (Tab 1) — qui dici al plugin *quali* layer di QGIS
-   rappresentano la tua rete e *come* leggerne i campi (quale campo è il
-   diametro, quale identifica i nodi a pressione nota, ecc.). Il risultato di
-   questa fase sono due file CSV — uno per i nodi, uno per le condotte — nel
-   formato che il motore di calcolo capisce.
-2. **Simula** (Tab 2) — qui imposti i parametri fisici (pressione di
-   riferimento, temperatura, composizione del gas) e i parametri del metodo
-   di calcolo (tolleranza, numero di iterazioni), poi avvii la simulazione
-   vera e propria. Al termine, il plugin crea automaticamente in QGIS due
-   nuovi layer con i risultati colorati (pressioni sui nodi, portate e
-   velocità sulle condotte).
+1. **Verifica di adeguatezza**: determinazione delle pressioni ai punti di
+   consegna per un assegnato profilo di domanda oraria, e confronto con i
+   valori minimi contrattuali.
+2. **Analisi di blending di idrogeno**: valutazione dell'effetto di una
+   frazione molare di H₂ su pressioni, velocità, potere calorifico, densità
+   relativa e indice di Wobbe, per la verifica dei vincoli normativi di
+   qualità del gas (§13.4).
+3. **Dimensionamento di interventi**: confronto fra configurazioni alternative
+   di rete a parità di domanda.
+4. **Campagne pluri-scenario**: esecuzione automatica di 24 scenari orari, o
+   di una serie di giorni, con raccolta sistematica dei risultati.
 
-Le sezioni successive di questa Guida seguono proprio questa struttura:
-prima qualche concetto di fisica utile a capire *perché* certi campi esistono
-(sezione "Concetti fisici di base"), poi la spiegazione di ogni singolo
-elemento dell'interfaccia, tab per tab.
+## 1.5 Architettura dell'elaborazione
 
-## A chi è rivolta questa guida
+Il flusso è organizzato in tre fasi, corrispondenti alle tre schede
+dell'interfaccia:
 
-Questa guida è pensata per chi **non è né un esperto di reti gas, né un
-esperto di QGIS**: ogni funzione viene spiegata sia dal punto di vista pratico
-("cosa devo scrivere in questo campo") sia dal punto di vista fisico ("perché
-questo dato serve al calcolo, e cosa rappresenta fisicamente"). Se sei già
-esperto di uno dei due ambiti, puoi saltare direttamente alla sezione che ti
-interessa usando l'elenco a sinistra.
+| Fase | Scheda | Contenuto |
+|------|--------|-----------|
+| Verifica topologica | Tab 0 | Analisi di connessione del layer condotte, individuazione di geometrie degeneri, duplicati e componenti sconnesse; correzione per snap degli estremi (§4). |
+| Definizione ed esecuzione | Tab 1 | Associazione dei campi dei layer alle grandezze del modello, assegnazione dei parametri fisici e numerici, generazione dei file di ingresso ed esecuzione del solutore (§5, §6, §7). |
+| Post-processing | Tab 2 | Rappresentazione tematica dei risultati ed esportazione (§8). |
 
-## Come usare questa Guida
+L'ordine 0 → 1 → 2 non è indicativo ma operativo: la mancata verifica
+topologica preliminare è la causa più frequente di non convergenza su dati
+vettoriali non predisposti per il calcolo (§12.6).
 
-Usa l'elenco a sinistra per saltare direttamente alla sezione che ti serve.
-La Guida è separata dal pulsante **ℹ Info**, che mostra invece la versione del
-plugin, l'autore e i riferimenti di licenza.
+## 1.6 Struttura del documento
+
+I §2–§3 descrivono il modello e l'organizzazione dell'interfaccia; i §4–§8
+documentano, scheda per scheda, ogni controllo esposto; i §9–§10 definiscono le
+grandezze restituite; il §11 riporta un **caso di verifica riproducibile**, con
+i valori numerici attesi, da eseguire per validare l'installazione; il §12
+raccoglie la diagnostica di convergenza; i §13–§14 contengono riferimenti
+tecnici, normativi e la nomenclatura.
+
+Le grandezze sono indicate con il simbolo e l'unità di misura adottati nel §14.
+Le equazioni sono numerate per sezione e richiamate nel testo.

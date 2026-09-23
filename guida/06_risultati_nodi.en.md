@@ -1,27 +1,76 @@
-# Results — Nodes
+# 9. Nodal quantities
 
-At the end of the simulation, the plugin creates a point layer called
-`[Results] Nodes — <layer_name>`, with one field per computed quantity. This
-section explains what each field physically means.
+## 9.1 List of quantities
 
-| Field | Unit | Meaning |
-|-------|------|---------|
-| `pressure_bar` | bar | Absolute pressure computed by the simulation at that node. This is the main result: it represents the force pushing gas towards lower-pressure nodes. |
-| `temperature_k` | K | Operating temperature at the node. In the current model it is propagated from the value set in the Physical Parameters (uniform temperature across the whole network). |
-| `sp_gravity` | — (dimensionless) | **Specific gravity**: the ratio between the gas density at that point and the density of air, both at the same standard conditions. A value < 1 means a gas lighter than air (e.g. hydrogen, sp. gravity ≈ 0.07); a value close to 0.6 is typical of pure methane. This matters when assessing gas dispersion in the event of a leak (a gas lighter than air tends to rise and disperse upward). |
-| `z_factor` | — (dimensionless) | **Compressibility factor Z**: measures how much the real gas deviates from ideal behaviour (Z = 1 for an ideal gas). Depends on pressure, temperature and composition. The solver needs it to correctly compute the gas density at operating conditions (see "Basic physics concepts"). |
-| `hhv_mj_sm3` | MJ/sm³ | **Higher Heating Value**: the energy released by fully burning one standard cubic metre of that gas, including the heat recoverable from condensing the water vapour produced. This is the key quantity to understand how much energy the network is actually carrying at that point, not just how much gas "volume". |
-| `wobbe_mj_sm3` | MJ/sm³ | **Wobbe index** = HHV / √(specific gravity). Measures interchangeability between different gases: two gases with the same Wobbe index release the same thermal power through the same burner, even if their compositions differ. It is the most commonly used indicator to assess whether a blend (e.g. with hydrogen) is compatible with appliances designed for pure natural gas. |
-| `density_kg_m3` | kg/m³ | Gas density at the node's actual operating conditions (local pressure and temperature). The higher the pressure, the denser the gas — one cubic metre at 70 bar holds far more gas than the same cubic metre at atmospheric pressure. |
-| `std_density_kg_sm3` | kg/sm³ | Gas density at **standard reference conditions** (15 °C, 1.01325 bar). Unlike operating density, it depends only on gas composition, not on local pressure: it is the value used to convert between Sm³ flow rates and mass flow rates (kg/s). |
-| `molar_mass` | g/mol | Average molar mass of the gas mixture at that node, computed as a weighted average over the mole fractions of the individual components. Heavier components (propane, butane) increase the average molar mass; hydrogen, being very light, drastically lowers it even at low concentrations. |
+Contained in the `R-N-<name> #N` layer and in the `results_nodes.csv` file,
+subject to the selections made in §8.2.
 
-## How to read these values in practice
+| Field | Symbol | Unit | Definition |
+|-------|--------|------|------------|
+| `pressure_bar` | p | bar (absolute) | Nodal pressure, the primary unknown of system (2.3). For its relation to the assigned value see (2.2). |
+| `temperature_k` | T | K | Gas temperature at the node; uniform and equal to the assigned value (isothermal assumption). |
+| `sp_gravity` | SG | — | Specific gravity relative to air at standard conditions, eq. (2.10). |
+| `z_factor` | Z | — | Compressibility factor from the GERG-2008 equation of state (§2.5). |
+| `hhv_mj_sm3` | HHV | MJ/sm³ | Higher heating value referred to standard conditions (2.1). |
+| `wobbe_mj_sm3` | W | MJ/sm³ | Wobbe index, eq. (2.11). |
+| `density_kg_m3` | ρ | kg/m³ | Density at the local operating conditions (p, T). |
+| `std_density_kg_sm3` | ρ_b | kg/sm³ | Density at standard conditions; depends on composition alone. Conversion factor between standard volumetric flow and mass flow. |
+| `molar_mass` | M | g/mol | Average molar mass of the mixture. |
+| `h2_pct` | x_H₂ | % | Molar fraction of hydrogen at the node. |
+| `gas_comp` | — | text | Local molar composition, in the form `methane=0.86909;ethane=0.08661;…`, limited to components with fraction above 1×10⁻⁴. |
+| `throughput_sm3h` | — | Sm³/h | Total flow entering the node from the connected pipelines. It does not coincide with the nodal demand: it represents transit. |
+| `volumetric_flow_sm3s` | D | sm³/s | Signed nodal demand (§5.6). Present in the QGIS layer only. |
+| `energy_flow_mw` | — | MW | Nodal demand expressed as thermal power. Present in the QGIS layer only. |
+| `node_type` | — | text | `reference` for fixed-pressure nodes. Present in the QGIS layer only. |
 
-- A `pressure_bar` value dropping below the contractual minimum threshold at
-  a delivery point signals a network capacity problem in that area.
-- A `sp_gravity` or `molar_mass` value that changes sharply from one node to
-  another can indicate a mixing point between gases of different composition
-  (e.g. a hydrogen injection).
-- `wobbe_mj_sm3` is the first value to check when assessing the compliance
-  of a hydrogen/methane blend with regulations and with end-user appliances.
+## 9.2 Composition-dependent quantities
+
+With a single composition, `sp_gravity`, `hhv_mj_sm3`, `wobbe_mj_sm3`,
+`molar_mass`, `std_density_kg_sm3` and `h2_pct` are uniform across the network,
+whereas `z_factor` and `density_kg_m3` vary with the local pressure.
+
+Where injections of differing composition are present (§5.7), all
+composition-dependent quantities vary from node to node according to the mixing
+field solved with the scheme of §2.6. The distribution of `h2_pct` then
+describes the dilution of hydrogen away from the injection points and
+constitutes the quantity of interest in partial blending studies.
+
+## 9.3 Expected orders of magnitude
+
+Values computed for the default gas (SNAM Mazara del Vallo) and for the same
+mixture with 13.92 % molar hydrogen, at 76 bar and 288.15 K.
+
+| Quantity | Mazara | Mazara + 13.92 % H₂ | Change |
+|----------|--------|----------------------|--------|
+| SG | 0.6323 | 0.5539 | −12.4 % |
+| M | 18.32 g/mol | 16.05 g/mol | −12.4 % |
+| Z | 0.818 | 0.879 | +7.5 % |
+| ρ (76 bar) | ≈ 71 kg/m³ | ≈ 58 kg/m³ | −18 % |
+| ρ_b | 0.8172 kg/sm³ | 0.7160 kg/sm³ | −12.4 % |
+| HHV | 42.12 MJ/sm³ | 38.04 MJ/sm³ | −9.7 % |
+| W | 52.98 MJ/sm³ | 51.11 MJ/sm³ | −3.5 % |
+
+The values were obtained with the plugin's calculation engine under the stated
+conditions (§11.7).
+
+## 9.4 Reading criteria
+
+**Minimum pressure.** Adequacy assessment is carried out on the ascending
+ordering of `pressure_bar`, or on the thematic rendering of the same field: the
+lowest-pressure nodes identify the critical sections of the network.
+
+**Anomalous uniformity.** A nearly uniform pressure field, together with
+`throughput_sm3h` values close to zero, indicates that demands have not been
+acquired (§12.7), not that the network is oversized.
+
+**Gas quality.** HHV and Wobbe index must be examined jointly: increasing the
+hydrogen fraction reduces both, but to a different extent (§9.3), and the
+governing regulatory constraint for Italian networks concerns specific gravity
+(§13.4). The reduction of the Wobbe index, modest compared with that of the
+heating value, is the quantity governing compatibility with end-user
+appliances.
+
+**Consistency with the boundary condition.** The pressure at the reference node
+must equal the assigned value increased by 1.013 bar (2.2). A discrepancy
+indicates that the reference node is not the expected one, or that more than
+one exists.

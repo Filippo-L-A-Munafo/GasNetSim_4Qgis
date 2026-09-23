@@ -34,3 +34,7 @@ desktop.ini
 **/results/
 *.bak*
 
+
+_to_delete/
+*.bak*
+REPORT_REVISIONE_MANUALE.md

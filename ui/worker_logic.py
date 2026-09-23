@@ -40,6 +40,13 @@ def run_simulation(params: dict, log_func):
         folder = Path(params['cartella'])
         log(f"{'='*50}", '')
         log(f"  GasNetSim — Avvio Simulazione", '')
+        # Identificazione del codice: il numero di versione del plugin e quello
+        # del motore sono indipendenti, quindi entrambi vanno registrati.
+        try:
+            from .version import build_stamp
+            log(f"  {build_stamp()}", '')
+        except Exception:
+            pass
         log(f"  Cartella: {folder}", '')
         log(f"{'='*50}", '')
 
@@ -458,7 +465,7 @@ def run_simulation(params: dict, log_func):
                     ratio0 = {cid: float(getattr(c, 'compression_ratio', 1.0))
                               for cid, c in comps.items()}
 
-                    log(f"\n🔧 Rampa ADATTIVA sui compressori "
+                    log(f"\nRampa ADATTIVA sui compressori "
                         f"(passo iniziale 1/{n_passi}, bisezione sui punti duri) "
                         f"— parto da rapporto 1.00 (compressore trasparente)...",
                         'orange')
@@ -564,7 +571,7 @@ def run_simulation(params: dict, log_func):
                 result = network
 
         if converged and params.get('refine'):
-            log("\n🔍 Affinamento precisione in corso...", 'orange')
+            log("\nAffinamento precisione in corso...", 'orange')
             best_tol = tol
             best_result = result
             _MIN_TOL = 1e-4
@@ -651,7 +658,7 @@ def run_simulation(params: dict, log_func):
                             "potrebbero non essere convergenti", 'orange')
 
             result = best_result
-            log(f"🔍 Affinamento: tol finale = {best_tol:.4g} Sm³/s  |  urf = {urf}", 'green')
+            log(f"Affinamento: tol finale = {best_tol:.4g} Sm³/s  |  urf = {urf}", 'green')
 
         # --- Risultati ---
         if result is not None:
@@ -947,6 +954,24 @@ def run_simulation(params: dict, log_func):
                             f"totale {_tot_mw:.3f} MW "
                             f"(energia {_tot_mw * _dt_h:.3f} MWh nell'ora simulata).",
                             'green')
+
+                # --- Provenienza: chi ha prodotto questi risultati -----------
+                # Versione del plugin, versione/commit del motore e parametri
+                # effettivamente usati. Scritto in un file a parte per non
+                # alterare l'intestazione dei CSV, che restano leggibili da
+                # qualunque parser senza opzioni aggiuntive.
+                try:
+                    import json as _json
+                    from .version import provenance
+                    _iters = getattr(result, 'last_iterations', None)
+                    _info = provenance(params=params, converged=converged,
+                                       iterations=_iters,
+                                       elapsed_s=time.time() - _t0)
+                    with open(str(out_folder / 'run_info.json'), 'w',
+                              encoding='utf-8') as _fh:
+                        _json.dump(_info, _fh, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
 
                 log(f"CSV risultati salvati in {out_folder}", 'green' if converged else 'orange')
             except Exception:

@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "GasNetSim_4Qgis: An Open-Source 3D Geospatial Digital Twin Framework for Regional Gas Transmission and Hydrogen Blending"
-version: 1.0.0
-date-released: 2026-09-08
+version: 0.9.0
+date-released: 2026-09-17
 license: MIT
 repository-code: "https://github.com/Filippo-L-A-Munafo/GasNetSim_4Qgis"
 authors:
